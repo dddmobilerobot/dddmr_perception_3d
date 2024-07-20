@@ -1,0 +1,11 @@
+gbl_utils:
+  1. max_obstacle_distance is used to initialize dynamic graph --> dynamic graph is a std::unordered_map<unsigned int, double> where it stores distance at second element.
+  2. by default max_obstacle_distance is 9999.0 --> 10km which should be enough for current usage.
+
+multilayer_spinning_lidar:
+  1. Euclidean distance cluster is used to lidar observation.
+  2. Each cluster is store along with the robot orientation (the plane equation with point clouds ptr).
+  2.x. map<map,<map,pair<pcl::ptr,pcl::coefficient>>> --> coefficient is used for plane equation.
+  3. The point cloud cluster is projected based on the plane equation for knn search(the projection is being voxelized and thus reduce the point size, given smaller point size, the knn search on dynamic graph is faster.)
+  4. exclusive_nodes is the algorithm that finds vertex with obstacles and stores the minimum distance to obstacles.
+  5. dGraph_->setValue will set the obstacle distance to the vertex and therefore can be used for path planning.

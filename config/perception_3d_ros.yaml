@@ -1,0 +1,39 @@
+perception_3d:
+  ros__parameters:
+    global_frame: "map"
+    robot_base_frame: "base_link"
+    max_obstacle_distance: 9999.0
+    inscribed_radius: 0.5
+    inflation_descending_rate: 2.0
+    inflation_radius: 1.5
+    sensors_collected_frequency: 5.0
+    plugins: ["map", "path_blocked_strategy", "lidar", "speed_limit_layer"]
+    map:
+      plugin: "perception_3d::StaticLayer"
+    path_blocked_strategy:
+      plugin: "perception_3d::PathBlockedStrategy"
+      check_radius: 0.3
+    lidar:
+      plugin: "perception_3d::MultiLayerSpinningLidar"
+      topic: "segmented_cloud_pure"
+      pub_gbl_marking_for_visualization: false
+      vertical_FOV_top: 5.0
+      vertical_FOV_bottom: -15.0
+      scan_effective_positive_start: 30.0
+      scan_effective_positive_end: 180.0
+      scan_effective_negative_start: -30.0
+      scan_effective_negative_end: -180.0
+      euclidean_cluster_extraction_tolerance: 0.3
+      euclidean_cluster_extraction_min_cluster_size: 1
+      euclidean_cluster_extraction_max_cluster_size: 100
+      resolution: 0.05
+      height_resolution: 0.2
+      marking_height: 1.0
+      perception_window_size: 3.0 #the window for marking/clearing in meter, we dont casting to maximum range of the sensor even it is gbl map
+      segmentation_ignore_ratio: 0.5 #f a segmentation match static pc with this ratio, we ignore it. ex: a wall
+      is_local_planner: false
+      expected_sensor_time: 0.2
+    speed_limit_layer:
+      plugin: "perception_3d::SpeedLimitLayer"
+      speed_zone_pcd_file_dir: "/root/dddmr/src/dddmr_perception_3d/config/speed_limit_layer.yaml" #Abs path   
+      knn_num_of_ground_search: 5
