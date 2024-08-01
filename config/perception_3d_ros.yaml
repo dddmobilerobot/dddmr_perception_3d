@@ -7,7 +7,7 @@ perception_3d:
     inflation_descending_rate: 2.0
     inflation_radius: 1.5
     sensors_collected_frequency: 5.0
-    plugins: ["map", "path_blocked_strategy", "lidar", "speed_limit_layer"]
+    plugins: ["map", "path_blocked_strategy", "lidar", "speed_limit_layer", "no_entry_layer"]
     map:
       plugin: "perception_3d::StaticLayer"
     path_blocked_strategy:
@@ -35,5 +35,9 @@ perception_3d:
       expected_sensor_time: 0.2
     speed_limit_layer:
       plugin: "perception_3d::SpeedLimitLayer"
-      speed_zone_pcd_file_dir: "/root/dddmr/src/dddmr_perception_3d/config/speed_limit_layer.yaml" #Abs path   
+      speed_zone_pcd_file_dir: "/root/dddmr_navigation/src/dddmr_perception_3d/config/speed_limit_layer.yaml" #Abs path   
       knn_num_of_ground_search: 5
+    no_entry_layer:
+      plugin: "perception_3d::NoEntryLayer"
+      no_entry_zone_pcd_file_dir: "/root/dddmr_navigation/src/dddmr_perception_3d/config/no_entry_layer.yaml" #Abs path   
+      inflation_distance: 1.0

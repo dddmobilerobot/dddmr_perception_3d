@@ -1,8 +1,8 @@
 speed_limit_layer:
   ros__parameters:
     zone1: 
-      pcd: "/root/dddmr/src/dddmr_perception_3d/map/zone1.pcd"
+      pcd: "/root/dddmr_navigation/src/dddmr_perception_3d/map/zone1.pcd"
       speed: 0.5
     zone2: 
-      pcd: "/root/dddmr/src/dddmr_perception_3d/map/zone2.pcd"
+      pcd: "/root/dddmr_navigation/src/dddmr_perception_3d/map/zone2.pcd"
       speed: 1.0

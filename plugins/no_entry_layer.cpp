@@ -28,30 +28,30 @@
 * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#include <perception_3d/speed_limit_layer.h>
+#include <perception_3d/no_entry_layer.h>
 
-PLUGINLIB_EXPORT_CLASS(perception_3d::SpeedLimitLayer, perception_3d::Sensor)
+PLUGINLIB_EXPORT_CLASS(perception_3d::NoEntryLayer, perception_3d::Sensor)
 
 namespace perception_3d
 {
 
-SpeedLimitLayer::SpeedLimitLayer(){
+NoEntryLayer::NoEntryLayer(){
 
 }
 
-SpeedLimitLayer::~SpeedLimitLayer(){
+NoEntryLayer::~NoEntryLayer(){
 
 }
 
-void SpeedLimitLayer::onInitialize()
+void NoEntryLayer::onInitialize()
 { 
 
   rclcpp::QoS map_qos(10);  // initialize to default
   map_qos.transient_local();
   map_qos.reliable();
   map_qos.keep_last(1);
-  zone_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("speed_limit_zones", map_qos);
-  speed_pc_zone_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("speed_limit_pc_zones", map_qos);
+  zone_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("no_entry_zones", map_qos);
+  no_entry_pc_zone_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("no_entry_pc_zones", map_qos);
 
   cbs_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions sub_options;
@@ -60,29 +60,28 @@ void SpeedLimitLayer::onInitialize()
   /*
   pcl_map_sub_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
     "mapcloud", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable(), 
-    std::bind(&SpeedLimitLayer::cbMap, this, std::placeholders::_1), sub_options);
+    std::bind(&NoEntryLayer::cbMap, this, std::placeholders::_1), sub_options);
 
   pcl_ground_sub_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
     "mapground", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable(), 
-    std::bind(&SpeedLimitLayer::cbGround, this, std::placeholders::_1), sub_options);
+    std::bind(&NoEntryLayer::cbGround, this, std::placeholders::_1), sub_options);
   */
 
-  node_->declare_parameter(name_ + "." + "speed_zone_pcd_file_dir", rclcpp::ParameterValue(""));
-  node_->get_parameter(name_ + "." + "speed_zone_pcd_file_dir", speed_zone_pcd_file_dir_);
-  RCLCPP_INFO(node_->get_logger().get_child(name_), "speed_zone_pcd_file_dir: %s" , speed_zone_pcd_file_dir_.c_str());
+  node_->declare_parameter(name_ + "." + "no_entry_zone_pcd_file_dir", rclcpp::ParameterValue(""));
+  node_->get_parameter(name_ + "." + "no_entry_zone_pcd_file_dir", no_entry_zone_pcd_file_dir_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "no_entry_zone_pcd_file_dir: %s" , no_entry_zone_pcd_file_dir_.c_str());
   
-  parseYAML(speed_zone_pcd_file_dir_);
-  
-  knn_num_of_ground_search_ = 1;
-  node_->declare_parameter(name_ + "." + "knn_num_of_ground_search", rclcpp::ParameterValue(1));
-  node_->get_parameter(name_ + "." + "knn_num_of_ground_search", knn_num_of_ground_search_);
-  RCLCPP_INFO(node_->get_logger().get_child(name_), "knn_num_of_ground_search: %d" , knn_num_of_ground_search_);
-  
-  current_zone_ = "";
+  parseYAML(no_entry_zone_pcd_file_dir_);
 
+  node_->declare_parameter(name_ + "." + "inflation_distance", rclcpp::ParameterValue(1.0));
+  node_->get_parameter(name_ + "." + "inflation_distance", inflation_distance_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "inflation_distance: %.2f" , inflation_distance_);
+
+  current_zone_ = "";
+  is_zone_initialized_ = false;
 }
 
-void SpeedLimitLayer::parseYAML(std::string path){
+void NoEntryLayer::parseYAML(std::string path){
 
   //@Start zone yaml stuff
   rcutils_allocator_t allocator = rcutils_get_default_allocator();
@@ -96,20 +95,20 @@ void SpeedLimitLayer::parseYAML(std::string path){
   }
   
   rclcpp::ParameterMap PM = rclcpp::parameter_map_from(params_hdl);
-  if(PM.find("/speed_limit_layer") == PM.end()){
-    RCLCPP_INFO(node_->get_logger().get_child(name_), "/speed_limit_layer not found, disable the layer.");
+  if(PM.find("/no_entry_layer") == PM.end()){
+    RCLCPP_INFO(node_->get_logger().get_child(name_), "/no_entry_layer not found, disable the layer.");
     return;
   }
   else{
   }
 
-  auto zones = PM.at("/speed_limit_layer");
+  auto zones = PM.at("/no_entry_layer");
 
   bool zone_read = false;
-  bool speed_read = false;
+  bool enable_read = false;
   std::string zone_name = "";
   std::string zone_dir = "";
-  double unit_zone_speed = 0.0;
+  bool is_enabled = false;
 
   //@ Following loop:
   // zone1.pcd
@@ -133,21 +132,21 @@ void SpeedLimitLayer::parseYAML(std::string path){
       zone_name += " : " + unit_zone_string_list.back();
       zone_dir = unit_zone_string;
     }
-    else if(strstr((*i).get_name().c_str(), std::string(".speed").c_str())){
-      unit_zone_speed = (*i).as_double();
-      speed_read = true;
+    else if(strstr((*i).get_name().c_str(), std::string(".is_enabled").c_str())){
+      is_enabled = (*i).as_bool();
+      enable_read = true;
     }
 
-    if(zone_read && speed_read){
-      RCLCPP_INFO(node_->get_logger().get_child(name_), "Read speed limit zone: %s with speed: %.2f", zone_name.c_str(), unit_zone_speed);
-      perception_3d::SpeedZone a_zone(name_, node_->get_node_logging_interface(), zone_name, zone_dir, unit_zone_speed);
+    if(zone_read && enable_read){
+      RCLCPP_INFO(node_->get_logger().get_child(name_), "Read no entry zone: %s with enable flag: %d", zone_name.c_str(), is_enabled);
+      perception_3d::NoEntryZone a_zone(name_, node_->get_node_logging_interface(), zone_name, zone_dir, is_enabled);
       getBoundingBox(a_zone);
-      speed_zones_.insert({zone_name, a_zone});
+      no_entry_zones_.insert({zone_name, a_zone});
       zone_marker_array_.markers.push_back(a_zone.bb_marker_);
       zone_intensity_pc_ += (*a_zone.zone_intensity_pc_);
       //reset
       zone_read = false;
-      speed_read = false;
+      enable_read = false;
       zone_name = "";
       zone_dir = "";
     }
@@ -158,11 +157,11 @@ void SpeedLimitLayer::parseYAML(std::string path){
   sensor_msgs::msg::PointCloud2 ros_pc2_msg;
   pcl::toROSMsg(zone_intensity_pc_, ros_pc2_msg);
   ros_pc2_msg.header.frame_id = gbl_utils_->getRobotFrame();
-  speed_pc_zone_pub_->publish(ros_pc2_msg);
+  no_entry_pc_zone_pub_->publish(ros_pc2_msg);
 
 }
 
-void SpeedLimitLayer::getBoundingBox(perception_3d::SpeedZone& a_zone){
+void NoEntryLayer::getBoundingBox(perception_3d::NoEntryZone& a_zone){
   
   // Generate an oriented bounding box around the selected points in RVIZ
   // Compute principal direction
@@ -215,95 +214,87 @@ void SpeedLimitLayer::getBoundingBox(perception_3d::SpeedZone& a_zone){
 
 }
 
-void SpeedLimitLayer::selfMark(){
+void NoEntryLayer::selfMark(){
 
   if(!shared_data_->is_static_layer_ready_){
     return;
   }
 
-  geometry_msgs::msg::TransformStamped trans_g2b;
-  try
-  {
-    trans_g2b = gbl_utils_->tf2Buffer()->lookupTransform(
-        gbl_utils_->getGblFrame(), gbl_utils_->getRobotFrame(), tf2::TimePointZero);
-  }
-  catch (tf2::TransformException& e)
-  {
-    RCLCPP_INFO(node_->get_logger().get_child(name_), "Failed to get transform: %s", e.what());
-    return;
+  if(shared_data_->map_require_update_[name_]){
+    //@ need to regenerate dynamic graph
+    resetdGraph();
+    shared_data_->map_require_update_[name_] = false;
   }
   
-  //@ First we find knn points from ground and then we loop zones to check them, we use knn to double check existence, because of sparse ground situation
-  //@ Find knn of the robot in ground and check are all points in zones
-  pcl::PointXYZ robot_pt;
-  robot_pt.x = trans_g2b.transform.translation.x;
-  robot_pt.y = trans_g2b.transform.translation.y;
-  robot_pt.z = trans_g2b.transform.translation.z;
-  std::vector<int> pointIdxKNNSearch(knn_num_of_ground_search_);
-  std::vector<float> pointKNNSquaredDistance(knn_num_of_ground_search_);
-  if(shared_data_->kdtree_ground_->nearestKSearch(robot_pt, knn_num_of_ground_search_, pointIdxKNNSearch, pointKNNSquaredDistance)){
+  //@ use dGraph for no entry zone, because we want to turn on/off of the zones in run time
+  //@ for example, turn zone A on in morning, turn zone B on in evening
 
+  //@ Collect zone status
+  std::vector<bool> zone_enabled_status_current;
+  for(auto it=no_entry_zones_.begin(); it!=no_entry_zones_.end(); it++){
+    if(!is_zone_initialized_){
+      zone_enabled_status_.push_back((*it).second.is_enabled_);
+    }
+    else{
+      zone_enabled_status_current.push_back((*it).second.is_enabled_);
+    }
+  }
+
+  //@ Check whether we need to reinflate or not
+  bool need_reinflate = false;
+  if (zone_enabled_status_current==zone_enabled_status_){
+    //@ the status of array is the same, we dont need to update dGraph
   }
   else{
-    shared_data_->current_allowed_max_linear_speed_ = -1.0;
-    RCLCPP_ERROR(node_->get_logger().get_child(name_), "No ground has been found, disable speed limit.");
+    RCLCPP_INFO(node_->get_logger(), "No entry zone status changed, reset dGraph.");
+    resetdGraph();
+    need_reinflate = true;
   }
-
-  //@Loop zones here
-  bool in_zones = false;
-  for(auto it=speed_zones_.begin(); it!=speed_zones_.end(); it++){
-
-    int matched_number = 0;
-    for(auto knn_it = pointIdxKNNSearch.begin(); knn_it!=pointIdxKNNSearch.end(); knn_it++){
-
-      pcl::PointXYZ knn_pt = shared_data_->pcl_ground_->points[(*knn_it)];
-      std::vector<int> pointIdxRadiusSearch;
-      std::vector<float> pointRadiusSquaredDistance;
-      if((*it).second.kdtree_zone_->radiusSearch(knn_pt, 0.05, pointIdxRadiusSearch, pointRadiusSquaredDistance)>0){
-        matched_number++;
+  
+  if(need_reinflate){
+    for(auto it=no_entry_zones_.begin(); it!=no_entry_zones_.end(); it++){
+      
+      if(!(*it).second.is_enabled_)
+        continue;
+      //@ loop all point in no entry zone and set dGraph value to 0.0, also consider inflation
+      for(auto pt=(*it).second.zone_pc_->points.begin(); pt!=(*it).second.zone_pc_->points.end(); pt++){
+        std::vector<int> pointIdxRadiusSearch;
+        std::vector<float> pointRadiusSquaredDistance;
+        if(shared_data_->kdtree_ground_->radiusSearch((*pt), inflation_distance_, pointIdxRadiusSearch, pointRadiusSquaredDistance)>0){
+          for(int i=0;i<pointIdxRadiusSearch.size();i++){
+            dGraph_.setValue(pointIdxRadiusSearch[i], sqrt(pointRadiusSquaredDistance[i]));
+          }
+        }
       }
-
-    }
-    if(matched_number == knn_num_of_ground_search_){
-      if(current_zone_!=(*it).first){
-        current_zone_ = (*it).first;
-        RCLCPP_INFO(node_->get_logger().get_child(name_), "Enter Zone: %s", current_zone_.c_str());
-        shared_data_->current_allowed_max_linear_speed_ = (*it).second.speed_limit_;
-      }
-      in_zones = true;
-      break;
-    }
-
-  }
-  if(!in_zones){
-    if(current_zone_!=""){
-      current_zone_ = "";
-      RCLCPP_INFO(node_->get_logger().get_child(name_), "Exit Zones");
-      shared_data_->current_allowed_max_linear_speed_ = -1.0;
     }
   }
 
+
+  is_zone_initialized_ = true;
 }
 
-void SpeedLimitLayer::selfClear(){
-  shared_data_->map_require_update_[name_] = false;
+void NoEntryLayer::selfClear(){
+
 }
 
-void SpeedLimitLayer::resetdGraph(){}
-
-double SpeedLimitLayer::get_dGraphValue(const unsigned int index){
-  //@ No dGraph value in static layer, return 100 km
-  return 99999.9;
+void NoEntryLayer::resetdGraph(){
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "%s starts to reset dynamic graph.", name_.c_str());
+  dGraph_.clear();
+  dGraph_.initial(shared_data_->static_ground_size_, gbl_utils_->getMaxObstacleDistance());
 }
 
-bool SpeedLimitLayer::isCurrent(){
+double NoEntryLayer::get_dGraphValue(const unsigned int index){
+  return dGraph_.getValue(index);
+}
+
+bool NoEntryLayer::isCurrent(){
   
   current_ = true;
 
   return current_;
 }
 
-pcl::PointCloud<pcl::PointXYZI>::Ptr SpeedLimitLayer::getObservation(){
+pcl::PointCloud<pcl::PointXYZI>::Ptr NoEntryLayer::getObservation(){
 
   return sensor_current_observation_;
 

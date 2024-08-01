@@ -114,6 +114,7 @@ ament_target_dependencies(perception_3d_ros_node
 
 # layers
 add_library(layers SHARED
+  plugins/no_entry_layer.cpp
   plugins/speed_limit_layer.cpp
   plugins/static_layer.cpp
   plugins/path_blocked_strategy.cpp

@@ -1,0 +1,5 @@
+no_entry_layer:
+  ros__parameters:
+    zone1: 
+      pcd: "/root/dddmr_navigation/src/dddmr_perception_3d/map/no_entry1.pcd"
+      is_enabled: true
