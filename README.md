@@ -19,4 +19,4 @@ Perception 3D:
 - Zone feature support:
   - [x] Static layer
   - [x] Speed limit layer
-  - [ ] No enter layer
+  - [x] No enter layer
