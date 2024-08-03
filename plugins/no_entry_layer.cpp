@@ -247,6 +247,7 @@ void NoEntryLayer::selfMark(){
   }
   else{
     RCLCPP_INFO(node_->get_logger(), "No entry zone status changed, reset dGraph.");
+    zone_enabled_status_ = zone_enabled_status_current;
     resetdGraph();
     need_reinflate = true;
   }
