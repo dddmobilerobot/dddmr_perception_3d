@@ -7,7 +7,6 @@ Panels:
         - /Map1/Topic1
         - /Ground1/Topic1
         - /SpeedZone1/Topic1
-        - /NoEntryZone1/Status1
         - /NoEntryZone1/Topic1
         - /SpeedZoneMarker1/Topic1
       Splitter Ratio: 0.5
@@ -97,7 +96,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 4096
@@ -118,7 +117,7 @@ Visualization Manager:
         Value: /mapground
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
@@ -163,16 +162,16 @@ Visualization Manager:
       Channel Name: intensity
       Class: rviz_default_plugins/PointCloud2
       Color: 255; 255; 255
-      Color Transformer: ""
+      Color Transformer: Intensity
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 4096
+      Max Intensity: 999999
       Min Color: 0; 0; 0
-      Min Intensity: 0
+      Min Intensity: 999999
       Name: NoEntryZone
-      Position Transformer: ""
+      Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
       Size (m): 0.20000000298023224
@@ -184,6 +183,40 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /no_entry_pc_zones
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 1
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: Perception3D_dGraph
+      Position Transformer: XYZ
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.30000001192092896
+      Style: Tiles
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /perception_3d_ros/dGraph
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
@@ -245,25 +278,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 72.90875244140625
+      Distance: 59.179256439208984
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -44.4647102355957
-        Y: -32.270503997802734
-        Z: 7.894388198852539
+        X: -61.72821807861328
+        Y: -39.81997299194336
+        Z: 8.239246368408203
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.0247975587844849
+      Pitch: 1.1297974586486816
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 2.4853992462158203
+      Yaw: 2.4503965377807617
     Saved: ~
 Window Geometry:
   Displays:

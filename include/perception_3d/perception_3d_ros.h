@@ -58,17 +58,22 @@ class Perception3D_ROS : public rclcpp::Node {
     pluginlib::ClassLoader<Sensor> plugin_loader_;
     std::vector<std::string> plugins_;
     rclcpp::TimerBase::SharedPtr sensors_update_loop_timer_;
+    rclcpp::TimerBase::SharedPtr dgraph_publish_timer_;
     rclcpp::Clock::SharedPtr clock_;
     rclcpp::Time mark_and_clear_start_time_;
 
     double sensors_collected_frequency_;
+    double dgraph_publish_frequency_;
     void sensorsUpdateLoop();
-
+    void dGraphPublishLoop();
+    
     void clearPerceptionsSrv(const std::shared_ptr<std_srvs::srv::Empty::Request> req, 
                         std::shared_ptr<std_srvs::srv::Empty::Response> resp);
 
     rclcpp::CallbackGroup::SharedPtr tf_listener_group_;
     rclcpp::CallbackGroup::SharedPtr clear_perception_and_timer_group_;
+
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_dGraph_;
 
   protected:
 

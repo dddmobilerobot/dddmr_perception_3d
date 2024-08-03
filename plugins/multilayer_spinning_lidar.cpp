@@ -151,7 +151,7 @@ void MultiLayerSpinningLidar::onInitialize()
   pub_current_projected_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("current_projected", 2);
   pub_current_segmentation_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("current_segmentation", 2);
   pub_gbl_marking_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("global_marking", 2);
-  pub_dGraph_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("dGraph", 2);
+  pub_dGraph_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("multilayer_spinning_lidar/dGraph", 2);
 
   pub_casting_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("tracing_objects", 2);
 

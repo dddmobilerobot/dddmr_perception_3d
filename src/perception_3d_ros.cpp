@@ -73,6 +73,11 @@ void Perception3D_ROS::initial(){
   declare_parameter("sensors_collected_frequency", rclcpp::ParameterValue(0.0));
   this->get_parameter("sensors_collected_frequency", sensors_collected_frequency_);
   RCLCPP_INFO(this->get_logger(), "sensors_collected_frequency: %.2f", sensors_collected_frequency_);//5.0
+
+  declare_parameter("dgraph_publish_frequency", rclcpp::ParameterValue(0.0));
+  this->get_parameter("dgraph_publish_frequency", dgraph_publish_frequency_);
+  RCLCPP_INFO(this->get_logger(), "dgraph_publish_frequency: %.2f", dgraph_publish_frequency_);//5.0
+
   
   clock_ = this->get_clock();
 
@@ -148,6 +153,14 @@ void Perception3D_ROS::initial(){
   mark_and_clear_start_time_ = clock_->now();
   sensors_update_loop_timer_ = this->create_wall_timer(loop_time, std::bind(&Perception3D_ROS::sensorsUpdateLoop, this), clear_perception_and_timer_group_);
   
+  //@ create dGraph publisher
+  if(dgraph_publish_frequency_>0.0){
+    auto publish_time = std::chrono::milliseconds(int(1000/dgraph_publish_frequency_));
+    RCLCPP_WARN(this->get_logger(), "dGraph publish time: %ld ms", publish_time.count());
+    pub_dGraph_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("perception_3d_ros/dGraph", 2);
+    dgraph_publish_timer_ = this->create_wall_timer(publish_time, std::bind(&Perception3D_ROS::dGraphPublishLoop, this), clear_perception_and_timer_group_);
+  }
+
   clear_perceptions_srv_ = 
       this->create_service<std_srvs::srv::Empty>
           ("clear_perception_marking", 
@@ -213,7 +226,22 @@ void Perception3D_ROS::sensorsUpdateLoop()
               time_diff);  
   }
   
-  
+}
+
+void Perception3D_ROS::dGraphPublishLoop(){
+  pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_msg2 (new pcl::PointCloud<pcl::PointXYZI>);
+  for(size_t index=0;index<stacked_perception_->getSharedDataPtr()->static_ground_size_;index++){
+    pcl::PointXYZI ipt;
+    ipt.x = stacked_perception_->getSharedDataPtr()->pcl_ground_->points[index].x;
+    ipt.y = stacked_perception_->getSharedDataPtr()->pcl_ground_->points[index].y;
+    ipt.z = stacked_perception_->getSharedDataPtr()->pcl_ground_->points[index].z; 
+    ipt.intensity = get_min_dGraphValue(index);
+    pcl_msg2->push_back(ipt);
+  }
+  sensor_msgs::msg::PointCloud2 ros_pc2_msg2;
+  pcl_msg2->header.frame_id = gbl_utils_->getGblFrame();
+  pcl::toROSMsg(*pcl_msg2, ros_pc2_msg2);
+  pub_dGraph_->publish(ros_pc2_msg2); 
 }
 
 double Perception3D_ROS::get_min_dGraphValue(const unsigned int index){
