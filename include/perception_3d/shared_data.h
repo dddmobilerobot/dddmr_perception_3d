@@ -62,6 +62,7 @@ class SharedData{
     pcl::search::KdTree<pcl::PointXYZ>::Ptr kdtree_map_;
     pcl::search::KdTree<pcl::PointXYZ>::Ptr kdtree_ground_;
     pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_ground_;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_map_;
     bool is_static_layer_ready_;
     std::map<std::string, bool> map_require_update_;
 
@@ -70,7 +71,7 @@ class SharedData{
     size_t static_map_size_;
 
     //@ Static graph in static layer for path planning
-    std::shared_ptr<StaticGraph> sGraph_ptr_;    
+    std::shared_ptr<perception_3d::StaticGraph> sGraph_ptr_;    
     
     //@ We only make aggregate observation as shared
     //@ Add kd tree as shared make system unstable, because multi process are calling the tree

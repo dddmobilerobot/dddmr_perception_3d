@@ -11,6 +11,13 @@ perception_3d:
     plugins: ["map", "path_blocked_strategy", "lidar", "speed_limit_layer", "no_entry_layer"]
     map:
       plugin: "perception_3d::StaticLayer"
+      use_adaptive_connection: false #If true: the neighbors of node is sparse, it will automatically increase search radius.
+      adaptive_connection_number: 20
+      radius_of_ground_connection: 1.5 #If use_adaptive_connection=false, the radius search of the node is applied.
+      hollow_hole_tolerance: 16 #If there are small holes in the ground, and you want to ignore them, increase this value 
+      intensity_search_radius: 1.0 #this value is suggested to be 1.0 meters, because if it is too large, the narrow passage will be miscalculated
+      intensity_search_punish_weight: 0.1 #the weight for a node. Set this value higher means we dont like path planning cross a orphan node.
+      static_imposing_radius: 1.0
     path_blocked_strategy:
       plugin: "perception_3d::PathBlockedStrategy"
       check_radius: 0.3

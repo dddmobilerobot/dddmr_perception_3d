@@ -151,7 +151,7 @@ void MultiLayerSpinningLidar::onInitialize()
   pub_current_projected_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("current_projected", 2);
   pub_current_segmentation_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("current_segmentation", 2);
   pub_gbl_marking_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("global_marking", 2);
-  pub_dGraph_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("multilayer_spinning_lidar/dGraph", 2);
+  pub_dGraph_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/dGraph", 2);
 
   pub_casting_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("tracing_objects", 2);
 
@@ -387,14 +387,14 @@ void MultiLayerSpinningLidar::selfMark(){
     
   }
 
-  if(true || pub_current_projected_->get_subscription_count()>0){
+  if(pub_current_projected_->get_subscription_count()>0){
     sensor_msgs::msg::PointCloud2 ros_pc2_msg;
     projected_cloud_clusters->header.frame_id = gbl_utils_->getGblFrame();
     pcl::toROSMsg(*projected_cloud_clusters, ros_pc2_msg);
     pub_current_projected_->publish(ros_pc2_msg);
   }
 
-  if(true || pub_current_segmentation_->get_subscription_count()>0){
+  if(pub_current_segmentation_->get_subscription_count()>0){
     sensor_msgs::msg::PointCloud2 ros_pc2_msg;
     cloud_clusters->header.frame_id = gbl_utils_->getGblFrame();
     pcl::toROSMsg(*cloud_clusters, ros_pc2_msg);
@@ -552,11 +552,11 @@ void MultiLayerSpinningLidar::selfClear(){
   //@ put to current observation, different for global/local
   sensor_current_observation_ = pc_current_window_;
   
-  if(true || pub_casting_->get_subscription_count()>0){
+  if(pub_casting_->get_subscription_count()>0){
     pub_casting_->publish(markerArray);
   }
 
-  if(true || pub_current_window_marking_->get_subscription_count()>0){
+  if(pub_current_window_marking_->get_subscription_count()>0){
     sensor_msgs::msg::PointCloud2 ros_pc2_msg;
     pc_current_window_->header.frame_id = gbl_utils_->getGblFrame();
     pcl::toROSMsg(*pc_current_window_, ros_pc2_msg);

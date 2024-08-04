@@ -59,6 +59,9 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/filters/extract_indices.h>
 
+/*pass through*/
+#include <pcl/filters/passthrough.h>
+
 namespace perception_3d
 {
 
@@ -78,6 +81,7 @@ class StaticLayer: public Sensor{
   private:
     
     void ptrInitial();
+    void radiusSearchConnection();
 
     /*call back of the ground*/
     void cbGround(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
@@ -87,6 +91,8 @@ class StaticLayer: public Sensor{
     /*Subscriber*/
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pcl_ground_sub_;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pcl_map_sub_;
+    
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_dGraph_;
 
     std::recursive_mutex cb_mutex_;
     
@@ -95,6 +101,16 @@ class StaticLayer: public Sensor{
 
     bool new_map_, new_ground_;
     rclcpp::CallbackGroup::SharedPtr cbs_group_;
+    bool is_local_planner_;
+
+    bool use_adaptive_connection_;
+    int adaptive_connection_number_;
+    double radius_of_ground_connection_;
+    int hollow_hole_tolerance_;
+    double turning_weight_;
+    double intensity_search_radius_;
+    double intensity_search_punish_weight_;
+    double static_imposing_radius_;
 };
 
 }//end of name space
