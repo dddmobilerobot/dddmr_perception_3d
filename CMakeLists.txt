@@ -112,6 +112,18 @@ ament_target_dependencies(perception_3d_ros_node
   ${dependencies}
 )
 
+#depth_camera_lib
+add_library(depth_camera_buffer SHARED
+  plugins/depth_camera/depth_camera_observation.cpp
+  plugins/depth_camera/depth_camera_observation_buffer.cpp
+)
+target_link_libraries(depth_camera_buffer
+  ${PCL_LIBRARIES}
+)
+ament_target_dependencies(depth_camera_buffer
+  ${dependencies}
+)
+
 # layers
 add_library(layers SHARED
   plugins/no_entry_layer.cpp
@@ -121,7 +133,7 @@ add_library(layers SHARED
   plugins/multilayer_spinning_lidar.cpp
 )
 target_link_libraries(layers
-  stacked_perception_ros
+  depth_camera_buffer stacked_perception_ros
 )
 ament_target_dependencies(layers
   ${dependencies}
