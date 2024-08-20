@@ -55,29 +55,26 @@ namespace perception_3d
 class DepthCameraObservationBuffer
 {
 public:
-  typedef std::unique_ptr<sensor_msgs::msg::PointCloud2> point_cloud_ptr;
-  DepthCameraObservationBuffer(std::string topic_name,
-                    double observation_keep_time,
-                    double expected_update_rate,
-                    double min_obstacle_height,
-                    double max_obstacle_height,
-                    double obstacle_range,
-                    tf2_ros::Buffer& tf2_buffer,
-                    std::string global_frame,
-                    std::string sensor_frame,
-                    double FOV_V,
-                    double FOV_W,
-                    double min_detect_distance,
-                    double max_detect_distance,
-                    rclcpp::Clock::SharedPtr clock,
-                    rclcpp::Logger logger);
+
+  DepthCameraObservationBuffer(
+      std::shared_ptr<tf2_ros::Buffer> tf2Buffer,
+      rclcpp::Logger logger,
+      std::string global_frame,
+      std::string base_link_frame,
+      std::string sensor_frame,
+      double min_detect_distance,
+      double max_detect_distance,
+      double min_obstacle_height_,
+      double max_obstacle_height_,
+      double FOV_W,
+      double FOV_V);
 
 
   ~DepthCameraObservationBuffer();
 
   void bufferCloud(const sensor_msgs::msg::PointCloud2& cloud);
 
-  void getObservations(std::vector<DepthCameraObservation>& observations);
+  void getObservations(std::vector<perception_3d::DepthCameraObservation>& observations);
 
   bool isCurrent() const;
 
@@ -93,14 +90,17 @@ public:
 
   void resetLastUpdated();
 
+
 private:
-
+  
   void purgeStaleObservations();
-
-  tf2_ros::Buffer& tf2_buffer_;
-  const rclcpp::Duration observation_keep_time_;
-  const rclcpp::Duration expected_update_rate_;
+  void cbSensor(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+  
+  std::shared_ptr<tf2_ros::Buffer> tf2Buffer_; 
+  double observation_keep_time_;
+  double expected_update_rate_;
   rclcpp::Time last_updated_;
+  std::string base_link_frame_;
   std::string global_frame_;
   std::string sensor_frame_;
   std::string topic_name_;
@@ -115,13 +115,15 @@ private:
   rclcpp::Logger logger_;
 
 
-  std::list<DepthCameraObservation> observation_list_;
+  std::list<perception_3d::DepthCameraObservation> observation_list_;
   std::mutex lock_;  ///< @brief A lock for accessing data in callbacks safely
 
   /// Adaptive height change
   rclcpp::Time adapt_height_cout_prev_time_;
   unsigned long adpat_height_cout_time_nsec_ = 10e9;
   bool adapt_height_init_ = false;
+  bool got_b2s_;
+  geometry_msgs::msg::TransformStamped b2s_; //baselink2sensor
   
 };
 }

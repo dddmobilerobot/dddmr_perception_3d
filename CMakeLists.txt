@@ -131,6 +131,7 @@ add_library(layers SHARED
   plugins/static_layer.cpp
   plugins/path_blocked_strategy.cpp
   plugins/multilayer_spinning_lidar.cpp
+  plugins/depth_camera/depth_camera_layer.cpp
 )
 target_link_libraries(layers
   depth_camera_buffer stacked_perception_ros

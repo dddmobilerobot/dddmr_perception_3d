@@ -28,53 +28,38 @@
 * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef DEPTH_CAMERA_OBSERVATION_H_
-#define DEPTH_CAMERA_OBSERVATION_H_
+#ifndef PERCEPTION_3D_DEPTH_CAMERA_LAYER_H_
+#define PERCEPTION_3D_DEPTH_CAMERA_LAYER_H_
 
-#include <geometry_msgs/msg/point.hpp> 
-#include <sensor_msgs/msg/point_cloud2.hpp>
-#include <pcl/common/transforms.h>
-#include <pcl_conversions/pcl_conversions.h>
+#include <perception_3d/sensor.h> 
+#include <perception_3d/depth_camera/depth_camera_observation_buffer.hpp>
 
 namespace perception_3d
 {
 
+class DepthCameraLayer: public Sensor{
 
-class DepthCameraObservation
-{
-public:
+  public:
 
-  DepthCameraObservation(const sensor_msgs::msg::PointCloud2& cloud);
-  //DepthCameraObservation(const DepthCameraObservation& obs);
+    DepthCameraLayer();
+    ~DepthCameraLayer();
 
-  virtual ~DepthCameraObservation();
+    virtual void onInitialize();
+    virtual void selfClear();
+    virtual void selfMark();
+    virtual pcl::PointCloud<pcl::PointXYZI>::Ptr getObservation();
+    virtual void resetdGraph();
+    virtual double get_dGraphValue(const unsigned int index);
+    virtual bool isCurrent();
 
-  pcl::PointXYZ getVec(pcl::PointXYZ vec1, pcl::PointXYZ vec2);
-  pcl::PointXYZ getCrossProduct(pcl::PointXYZ vec1, pcl::PointXYZ vec2);
-  void getPlaneN(Eigen::Vector4f& plane_equation, pcl::PointXYZ p1, pcl::PointXYZ p2, pcl::PointXYZ p3);
-  void findFrustumVertex();
-  void findFrustumNormal();
-  void findFrustumPlane();
-
-
-  /// These points are for frustum check
-  geometry_msgs::msg::Point origin_;
-  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_;
-  pcl::PointCloud<pcl::PointXYZI>::Ptr raw_cloud_;
-  pcl::PointCloud<pcl::PointXYZ>::Ptr frustum_;
-  pcl::PointCloud<pcl::PointXYZ>::Ptr frustum_normal_;
-  std::vector<Eigen::Vector4f> frustum_plane_equation_;
-
-  /// These parameter is essential for depth camera
-  double FOV_V_;
-  double FOV_W_;
-  double min_detect_distance_;
-  double max_detect_distance_;
-
-  pcl::PointXYZ BRNear_;
-  pcl::PointXYZ TLFar_;
-  
-
+  private:
+    
+    rclcpp::Clock::SharedPtr clock_;
+    
+    std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> sub_pc_vector_; 
+    std::vector<std::shared_ptr<perception_3d::DepthCameraObservationBuffer> > observation_buffers_;
+    
 };
-}
-#endif  // DEPTH_CAMERA_OBSERVATION_H_
+
+}//end of name space
+#endif
