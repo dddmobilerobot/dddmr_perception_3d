@@ -48,6 +48,7 @@
 // Observation
 #include <perception_3d/depth_camera/depth_camera_observation.h>
 #include <tf2_eigen/tf2_eigen.hpp>
+#include <pcl/filters/voxel_grid.h>
 
 namespace perception_3d
 {
@@ -57,17 +58,21 @@ class DepthCameraObservationBuffer
 public:
 
   DepthCameraObservationBuffer(
-      std::shared_ptr<tf2_ros::Buffer> tf2Buffer,
+      std::string topic_name,
+      const std::shared_ptr<tf2_ros::Buffer>& tf2Buffer,
       rclcpp::Logger logger,
+      const rclcpp::Clock::SharedPtr& clock,
       std::string global_frame,
       std::string base_link_frame,
       std::string sensor_frame,
       double min_detect_distance,
       double max_detect_distance,
-      double min_obstacle_height_,
-      double max_obstacle_height_,
+      double min_obstacle_height,
+      double max_obstacle_height,
       double FOV_W,
-      double FOV_V);
+      double FOV_V,
+      double expected_update_rate,
+      double observation_persistence);
 
 
   ~DepthCameraObservationBuffer();
@@ -97,7 +102,7 @@ private:
   void cbSensor(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
   
   std::shared_ptr<tf2_ros::Buffer> tf2Buffer_; 
-  double observation_keep_time_;
+  double observation_persistence_;
   double expected_update_rate_;
   rclcpp::Time last_updated_;
   std::string base_link_frame_;

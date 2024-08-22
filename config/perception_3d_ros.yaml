@@ -8,7 +8,7 @@ perception_3d:
     inflation_radius: 1.5
     sensors_collected_frequency: 5.0
     dgraph_publish_frequency: 1.0
-    plugins: ["map", "path_blocked_strategy", "lidar", "speed_limit_layer", "no_entry_layer"]
+    plugins: ["map", "path_blocked_strategy", "depth_camera","speed_limit_layer", "no_entry_layer"]
     map:
       plugin: "perception_3d::StaticLayer"
       use_adaptive_connection: false #If true: the neighbors of node is sparse, it will automatically increase search radius.
@@ -49,3 +49,11 @@ perception_3d:
       plugin: "perception_3d::NoEntryLayer"
       no_entry_zone_pcd_file_dir: "/root/dddmr_navigation/src/dddmr_perception_3d/config/no_entry_layer.yaml" #Abs path   
       inflation_distance: 1.0
+    depth_camera:
+      plugin: "perception_3d::DepthCameraLayer"
+      observation_sources: "camera_right"
+      camera_right:
+        topic: "/camera/camera/depth/color/points"
+        sensor_frame: "camera_link"
+        observation_persistence: 0.0
+        expected_update_rate: 0.1

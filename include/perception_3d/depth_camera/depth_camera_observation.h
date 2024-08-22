@@ -60,7 +60,7 @@ public:
   /// These points are for frustum check
   geometry_msgs::msg::Point origin_;
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_;
-  pcl::PointCloud<pcl::PointXYZI>::Ptr raw_cloud_;
+  pcl::PointCloud<pcl::PointXYZ>::Ptr raw_cloud_;
   pcl::PointCloud<pcl::PointXYZ>::Ptr frustum_;
   pcl::PointCloud<pcl::PointXYZ>::Ptr frustum_normal_;
   std::vector<Eigen::Vector4f> frustum_plane_equation_;

@@ -44,21 +44,23 @@ class DepthCameraLayer: public Sensor{
     DepthCameraLayer();
     ~DepthCameraLayer();
 
-    virtual void onInitialize();
-    virtual void selfClear();
-    virtual void selfMark();
-    virtual pcl::PointCloud<pcl::PointXYZI>::Ptr getObservation();
-    virtual void resetdGraph();
-    virtual double get_dGraphValue(const unsigned int index);
-    virtual bool isCurrent();
+    void onInitialize();
+    void selfClear();
+    void selfMark();
+    pcl::PointCloud<pcl::PointXYZI>::Ptr getObservation();
+    void resetdGraph();
+    double get_dGraphValue(const unsigned int index);
+    bool isCurrent();
 
   private:
     
     rclcpp::Clock::SharedPtr clock_;
-    
-    std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> sub_pc_vector_; 
-    std::vector<std::shared_ptr<perception_3d::DepthCameraObservationBuffer> > observation_buffers_;
-    
+    void cbSensor(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
+                                    const std::shared_ptr<perception_3d::DepthCameraObservationBuffer>& buffer);
+                                    
+    std::map<std::string, rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> sub_pc_map_; 
+    std::map<std::string, std::shared_ptr<perception_3d::DepthCameraObservationBuffer> > observation_buffers_;
+
 };
 
 }//end of name space

@@ -57,90 +57,131 @@ void DepthCameraLayer::onInitialize()
   clock_ = node_->get_clock();
 
   std::string topics_string;
+  node_->declare_parameter(name_ + ".observation_sources", rclcpp::ParameterValue(""));
   node_->get_parameter(name_ + ".observation_sources", topics_string);
   RCLCPP_INFO(node_->get_logger().get_child(name_), "Subscribed to Topics: %s", topics_string.c_str());
   std::stringstream ss(topics_string);
 
   std::string source;
   while (ss >> source) {
-
+    
+    std::string sub_name = name_ + "." + source;
     double observation_persistence, expected_update_rate, min_obstacle_height, max_obstacle_height;
     std::string topic, sensor_frame;
     bool inf_is_valid, clearing, marking;
     double obstacle_max_range, obstacle_min_range;
     double FOV_W, FOV_V;
+    
+    RCLCPP_INFO(node_->get_logger().get_child(name_), "Processing: %s", sub_name.c_str());
 
-    node_->declare_parameter(source + ".topic", rclcpp::ParameterValue(source));
-    node_->get_parameter(source + ".topic", topic);
+    node_->declare_parameter(sub_name + ".topic", rclcpp::ParameterValue(source));
+    node_->get_parameter(sub_name + ".topic", topic);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "topic: %s", topic.c_str());
 
-    node_->declare_parameter(source + ".sensor_frame", rclcpp::ParameterValue(""));
-    node_->get_parameter(source + ".sensor_frame", sensor_frame);
-    RCLCPP_INFO(node_->get_logger().get_child(name_), "sensor_frame: %s", topic.c_str());
+    node_->declare_parameter(sub_name + ".sensor_frame", rclcpp::ParameterValue(""));
+    node_->get_parameter(sub_name + ".sensor_frame", sensor_frame);
+    RCLCPP_INFO(node_->get_logger().get_child(name_), "sensor_frame: %s", sensor_frame.c_str());
 
-    node_->declare_parameter(source + ".observation_persistence", rclcpp::ParameterValue(0.0));
-    node_->get_parameter(source + ".observation_persistence", observation_persistence);
+    node_->declare_parameter(sub_name + ".observation_persistence", rclcpp::ParameterValue(0.1));
+    node_->get_parameter(sub_name + ".observation_persistence", observation_persistence);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "observation_persistence: %.2f", observation_persistence);
 
-    node_->declare_parameter(source + ".expected_update_rate", rclcpp::ParameterValue(0.0));
-    node_->get_parameter(source + ".expected_update_rate", expected_update_rate);
+    node_->declare_parameter(sub_name + ".expected_update_rate", rclcpp::ParameterValue(0.1));
+    node_->get_parameter(sub_name + ".expected_update_rate", expected_update_rate);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "expected_update_rate: %.2f", expected_update_rate);
 
-    node_->declare_parameter(source + ".min_obstacle_height", rclcpp::ParameterValue(0.0));
-    node_->get_parameter(source + ".min_obstacle_height", min_obstacle_height);
+    node_->declare_parameter(sub_name + ".min_obstacle_height", rclcpp::ParameterValue(0.0));
+    node_->get_parameter(sub_name + ".min_obstacle_height", min_obstacle_height);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "min_obstacle_height: %.2f", min_obstacle_height);
 
-    node_->declare_parameter(source + ".max_obstacle_height", rclcpp::ParameterValue(0.0));
-    node_->get_parameter(source + ".max_obstacle_height", max_obstacle_height);
+    node_->declare_parameter(sub_name + ".max_obstacle_height", rclcpp::ParameterValue(2.0));
+    node_->get_parameter(sub_name + ".max_obstacle_height", max_obstacle_height);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "max_obstacle_height: %.2f", max_obstacle_height);
 
-    node_->declare_parameter(source + ".marking", rclcpp::ParameterValue(true));
-    node_->get_parameter(source + ".marking", marking);
+    node_->declare_parameter(sub_name + ".marking", rclcpp::ParameterValue(true));
+    node_->get_parameter(sub_name + ".marking", marking);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "marking: %d", marking);
 
-    node_->declare_parameter(source + ".clearing", rclcpp::ParameterValue(true));
-    node_->get_parameter(source + ".clearing", clearing);
+    node_->declare_parameter(sub_name + ".clearing", rclcpp::ParameterValue(true));
+    node_->get_parameter(sub_name + ".clearing", clearing);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "clearing: %d", clearing);
 
-    node_->declare_parameter(source + ".obstacle_max_range", rclcpp::ParameterValue(2.5));
-    node_->get_parameter(source + ".obstacle_max_range", obstacle_max_range);
+    node_->declare_parameter(sub_name + ".obstacle_max_range", rclcpp::ParameterValue(2.5));
+    node_->get_parameter(sub_name + ".obstacle_max_range", obstacle_max_range);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "obstacle_max_range: %.2f", obstacle_max_range);
 
-    node_->declare_parameter(source + ".obstacle_min_range", rclcpp::ParameterValue(0.0));
-    node_->get_parameter(source + ".obstacle_min_range", obstacle_min_range);
+    node_->declare_parameter(sub_name + ".obstacle_min_range", rclcpp::ParameterValue(0.0));
+    node_->get_parameter(sub_name + ".obstacle_min_range", obstacle_min_range);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "obstacle_min_range: %.2f", obstacle_min_range);
 
-    node_->declare_parameter(source + ".FOV_W", rclcpp::ParameterValue(2.0));
-    node_->get_parameter(source + ".FOV_W", FOV_W);
+    node_->declare_parameter(sub_name + ".FOV_W", rclcpp::ParameterValue(2.0));
+    node_->get_parameter(sub_name + ".FOV_W", FOV_W);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "FOV_W: %.2f", FOV_W);
 
-    node_->declare_parameter(source + ".FOV_V", rclcpp::ParameterValue(1.0));
-    node_->get_parameter(source + ".FOV_V", FOV_V);
+    node_->declare_parameter(sub_name + ".FOV_V", rclcpp::ParameterValue(1.0));
+    node_->get_parameter(sub_name + ".FOV_V", FOV_V);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "FOV_V: %.2f", FOV_V);
 
     // create an observation buffer
     
-    observation_buffers_.push_back(
+    observation_buffers_[source]=
       std::shared_ptr<perception_3d::DepthCameraObservationBuffer>(
         new DepthCameraObservationBuffer(
-          gbl_utils_->tf2Buffer(), node_->get_logger().get_child(name_),
+          topic,
+          gbl_utils_->tf2Buffer(), node_->get_logger().get_child(name_), clock_,
           gbl_utils_->getGblFrame(), gbl_utils_->getRobotFrame(), sensor_frame,
           obstacle_min_range, obstacle_max_range, 
           min_obstacle_height, max_obstacle_height,
-          FOV_W, FOV_V)
-      )
-    );
+          FOV_W, FOV_V,
+          expected_update_rate, observation_persistence)
+      );
     
+    std::function<void(const sensor_msgs::msg::PointCloud2::SharedPtr msg)> fcn = std::bind(&DepthCameraLayer::cbSensor, this, std::placeholders::_1, observation_buffers_[source]);
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr depth_camera_sub;
-    depth_camera_sub = node_->create_subscription<sensor_msgs::msg::PointCloud2>(topic, 2, 
-      std::bind(&DepthCameraLayer::cbSensor, this, std::placeholders::_1), sub_options); 
+    depth_camera_sub = node_->create_subscription<sensor_msgs::msg::PointCloud2>(topic, 2, fcn);
+    sub_pc_map_[source] = depth_camera_sub;
 
   }//end of ss
 }
 
-void DepthCameraLayer::cbSensor(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+void DepthCameraLayer::cbSensor(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
+                                    const std::shared_ptr<perception_3d::DepthCameraObservationBuffer>& buffer)
 {
-  (void) msg;
+  buffer->lock();
+  buffer->bufferCloud(*msg);
+  buffer->unlock();
+}
+
+void DepthCameraLayer::selfClear(){
+  bool a = isCurrent();
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "%d", a);
+}
+
+void DepthCameraLayer::selfMark(){
+
+}
+
+pcl::PointCloud<pcl::PointXYZI>::Ptr DepthCameraLayer::getObservation(){
+  pcl::PointCloud<pcl::PointXYZI>::Ptr dpc;
+  dpc.reset(new pcl::PointCloud<pcl::PointXYZI>());
+  return dpc;
+}
+
+void DepthCameraLayer::resetdGraph(){
+  
+}
+
+double DepthCameraLayer::get_dGraphValue(const unsigned int index){
+  return 9999999;
+}
+
+bool DepthCameraLayer::isCurrent(){
+
+  bool current = true;
+  for(auto i=observation_buffers_.begin(); i!=observation_buffers_.end();i++){
+    current = current && (*i).second->isCurrent();
+  }
+  return current;
 }
 
 }

@@ -34,7 +34,7 @@
 namespace perception_3d
 {
   DepthCameraObservation::DepthCameraObservation(const sensor_msgs::msg::PointCloud2& cloud) 
-  : raw_cloud_(new pcl::PointCloud<pcl::PointXYZI>())
+  : raw_cloud_(new pcl::PointCloud<pcl::PointXYZ>())
   , cloud_(new pcl::PointCloud<pcl::PointXYZI>())
   , frustum_(new pcl::PointCloud<pcl::PointXYZ>())
   , frustum_normal_(new pcl::PointCloud<pcl::PointXYZ>())
@@ -44,6 +44,7 @@ namespace perception_3d
   , min_detect_distance_(0.01)
   , max_detect_distance_(2.5)
   {
+    //copyPointCloud(cloud_xyz, cloud_xyzrgb);
     pcl::fromROSMsg(cloud, *raw_cloud_);
   }
   
