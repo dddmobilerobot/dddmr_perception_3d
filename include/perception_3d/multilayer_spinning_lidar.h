@@ -158,8 +158,7 @@ class MultiLayerSpinningLidar: public Sensor{
     double euclidean_cluster_extraction_tolerance_;
 
     /*pub and sub*/
-    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pcl_ros_sub_;
-    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pcl_map_sub_;
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sensor_sub_;
     
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_current_observation_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_current_segmentation_;

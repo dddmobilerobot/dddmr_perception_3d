@@ -58,7 +58,16 @@ class DepthCameraLayer: public Sensor{
     std::shared_ptr<perception_3d::Marking> pct_marking_;
 
     rclcpp::Clock::SharedPtr clock_;
-    
+
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_current_observation_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_current_segmentation_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_current_projected_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_current_window_marking_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_cleared_window_marking_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_casting_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_gbl_marking_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_dGraph_;
+
     void cbSensor(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
                                     const std::shared_ptr<perception_3d::DepthCameraObservationBuffer>& buffer);
     void aggregatePointCloudFromObservations(const pcl::PointCloud<pcl::PointXYZI>::Ptr& resulting_pcl)  ;
@@ -68,7 +77,8 @@ class DepthCameraLayer: public Sensor{
     
     bool is_local_planner_;
     double resolution_, height_resolution_;
-
+    double segmentation_ignore_ratio_;
+    geometry_msgs::msg::TransformStamped trans_gbl2b_;
 };
 
 }//end of name space

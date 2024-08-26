@@ -142,18 +142,18 @@ void MultiLayerSpinningLidar::onInitialize()
   rclcpp::SubscriptionOptions sub_options;
   sub_options.callback_group = sensor_cb_group_;
 
-  pcl_ros_sub_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
+  sensor_sub_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
     topic_, 2, 
     std::bind(&MultiLayerSpinningLidar::cbSensor, this, std::placeholders::_1), sub_options);
   
-  pub_current_observation_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("current_observation", 2);
-  pub_current_window_marking_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("current_window_marking", 2);
-  pub_current_projected_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("current_projected", 2);
-  pub_current_segmentation_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("current_segmentation", 2);
-  pub_gbl_marking_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("global_marking", 2);
+  pub_current_observation_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/current_observation", 2);
+  pub_current_window_marking_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/current_window_marking", 2);
+  pub_current_projected_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/current_projected", 2);
+  pub_current_segmentation_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/current_segmentation", 2);
+  pub_gbl_marking_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/global_marking", 2);
   pub_dGraph_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/dGraph", 2);
 
-  pub_casting_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("tracing_objects", 2);
+  pub_casting_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(name_ + "/tracing_objects", 2);
 
   pct_marking_ = std::make_shared<Marking>(&dGraph_, gbl_utils_->getInflationRadius(), shared_data_->kdtree_ground_, resolution_, height_resolution_);
   get_first_tf_ = false;
@@ -378,7 +378,7 @@ void MultiLayerSpinningLidar::selfMark(){
 
     }
     else{
-      RCLCPP_DEBUG(node_->get_logger().get_child(name_), "Reject cluster with size: %lu at %f,%f,%f", cloud_cluster->points.size(), centroid.x, centroid.y, centroid.z);
+      RCLCPP_DEBUG(node_->get_logger().get_child(name_), "Reject cluster with size: %lu at %f,%f,%f, because it is located in the static layer", cloud_cluster->points.size(), centroid.x, centroid.y, centroid.z);
     }
     
   }

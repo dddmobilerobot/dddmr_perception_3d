@@ -67,8 +67,22 @@ void DepthCameraLayer::onInitialize()
   node_->declare_parameter(name_ + ".height_resolution", rclcpp::ParameterValue(0.0));
   node_->get_parameter(name_ + ".height_resolution", height_resolution_);
   RCLCPP_INFO(node_->get_logger().get_child(name_), "height_resolution: %.2f", height_resolution_);
-  
+
+  node_->declare_parameter(name_ + ".segmentation_ignore_ratio", rclcpp::ParameterValue(0.0));
+  node_->get_parameter(name_ + ".segmentation_ignore_ratio", segmentation_ignore_ratio_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "segmentation_ignore_ratio: %.2f", segmentation_ignore_ratio_);
+
+  //@ create cluster marking object
   pct_marking_ = std::make_shared<Marking>(&dGraph_, gbl_utils_->getInflationRadius(), shared_data_->kdtree_ground_, resolution_, height_resolution_);
+  
+  //@ initial all publishers
+  pub_current_observation_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/current_observation", 2);
+  pub_current_window_marking_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/current_window_marking", 2);
+  pub_current_projected_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/current_projected", 2);
+  pub_current_segmentation_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/current_segmentation", 2);
+  pub_gbl_marking_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/global_marking", 2);
+  pub_dGraph_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/dGraph", 2);
+  pub_casting_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(name_ + "/tracing_objects", 2);
 
   std::string topics_string;
   node_->declare_parameter(name_ + ".observation_sources", rclcpp::ParameterValue(""));
@@ -179,7 +193,150 @@ void DepthCameraLayer::selfMark(){
   if(!shared_data_->isAllUpdated()){
     return;
   }
+
+  try
+  {
+    trans_gbl2b_ = gbl_utils_->tf2Buffer()->lookupTransform(
+        gbl_utils_->getGblFrame(), gbl_utils_->getRobotFrame(), tf2::TimePointZero);
+  }
+  catch (tf2::TransformException& e)
+  {
+    RCLCPP_INFO(node_->get_logger().get_child(name_), "Failed to get transforms: %s", e.what());
+    return;
+  }
+
+  pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_msg_gbl_;
+  pcl_msg_gbl_.reset(new pcl::PointCloud<pcl::PointXYZI>());
+  aggregatePointCloudFromObservations(pcl_msg_gbl_);
   
+  //@ aggregated observation is in global frame already
+  if(pcl_msg_gbl_->points.size()<=5)
+    return;
+
+  pcl::search::KdTree<pcl::PointXYZI>::Ptr pc_kdtree (new pcl::search::KdTree<pcl::PointXYZI>);
+  pc_kdtree->setInputCloud (pcl_msg_gbl_);
+
+  std::vector<pcl::PointIndices> cluster_indices_segmentation;
+  pcl::EuclideanClusterExtraction<pcl::PointXYZI> ec_segmentation;
+  double euclidean_cluster_extraction_tolerance_ = 0.1;
+  int euclidean_cluster_extraction_min_cluster_size_ = 1;
+  int euclidean_cluster_extraction_max_cluster_size_ = 10;
+  ec_segmentation.setClusterTolerance (euclidean_cluster_extraction_tolerance_);
+  ec_segmentation.setMinClusterSize (euclidean_cluster_extraction_min_cluster_size_);
+  ec_segmentation.setMaxClusterSize (euclidean_cluster_extraction_max_cluster_size_);
+  ec_segmentation.setSearchMethod (pc_kdtree);
+  ec_segmentation.setInputCloud (pcl_msg_gbl_);
+  ec_segmentation.extract (cluster_indices_segmentation);
+
+
+  float intensity_cnt = 100;
+  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_clusters (new pcl::PointCloud<pcl::PointXYZI>);
+  pcl::PointCloud<pcl::PointXYZI>::Ptr projected_cloud_clusters (new pcl::PointCloud<pcl::PointXYZI>);
+  for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices_segmentation.begin (); it != cluster_indices_segmentation.end (); ++it)
+  {
+
+    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZI>);
+    pcl::PointXYZ centroid;
+    pcl::PointXYZ centroid_base_link;
+    for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit){
+      
+      //@For visualization purpose
+      pcl::PointXYZI i_pt;
+      i_pt.x = pcl_msg_gbl_->points[*pit].x;
+      i_pt.y = pcl_msg_gbl_->points[*pit].y;
+      i_pt.z = pcl_msg_gbl_->points[*pit].z;
+      i_pt.intensity = intensity_cnt;
+      centroid.x += i_pt.x;
+      centroid.y += i_pt.y;
+      centroid.z += i_pt.z;
+
+      cloud_cluster->points.push_back(i_pt); 
+      cloud_clusters->points.push_back(i_pt);
+
+    } 
+    intensity_cnt += 100;
+    centroid.x/=it->indices.size();
+    centroid.y/=it->indices.size();
+    centroid.z/=it->indices.size();
+
+    //@ Sometimes the lidar accidently add ground scan (due to lego loam did not segment them correctly)
+    //@ Therefore we implement following temporal solution -> when cluster attach ground, ignore it!
+    std::vector<int> id(1);
+    std::vector<float> sqdist(1);
+    if(shared_data_->kdtree_ground_->radiusSearch(centroid, 0.1, id, sqdist, 1)){
+      continue;
+    }
+
+    //@ Test a cluster is in static. If the cluster is in static, we dont need to add it because we can save memory.
+    pcl::VoxelGrid<pcl::PointXYZI> sor;
+    sor.setInputCloud (cloud_cluster);
+    sor.setLeafSize (0.2f, 0.2f, 0.2f);
+    sor.filter (*cloud_cluster);
+    size_t hit=0;
+    id.clear();
+    sqdist.clear();
+    if(segmentation_ignore_ratio_<=0.999){
+      for(auto a_pt=cloud_cluster->points.begin();a_pt!=cloud_cluster->points.end();a_pt++){
+        if(shared_data_->kdtree_map_->radiusSearch(centroid, 0.1, id, sqdist, 1)){
+          hit++;
+          if(hit>cloud_cluster->points.size()*segmentation_ignore_ratio_)
+            break;
+        }
+      }      
+    }
+
+    if(hit<=cloud_cluster->points.size()*segmentation_ignore_ratio_){
+
+      //@ Project pc base on robot RPY:
+      // This is not the perfect solution, because the robot may stand on the ground but the obstalce in on slope
+      // Maybe the best approach is to project base on the ground normal
+      
+      tf2::Quaternion rotation(trans_gbl2b_.transform.rotation.x, trans_gbl2b_.transform.rotation.y, trans_gbl2b_.transform.rotation.z, trans_gbl2b_.transform.rotation.w);
+      tf2::Vector3 vector(0, 0, 1);
+      tf2::Vector3 base_link_normal = tf2::quatRotate(rotation, vector);
+
+      pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients ());
+      coefficients->values.resize (4);
+      coefficients->values[0] = base_link_normal[0];
+      coefficients->values[1] = base_link_normal[1];
+      coefficients->values[2] = base_link_normal[2];
+      double d = -trans_gbl2b_.transform.translation.x*base_link_normal[0]-trans_gbl2b_.transform.translation.y*base_link_normal[1]-trans_gbl2b_.transform.translation.z*base_link_normal[2];
+      coefficients->values[3] = d;
+      // Create the filtering object
+      
+      //pcl::PointCloud<pcl::PointXYZI>::Ptr projected_cloud_cluster (new pcl::PointCloud<pcl::PointXYZI>);
+      //pcl::ProjectInliers<pcl::PointXYZI> proj;
+      //proj.setModelType (pcl::SACMODEL_PLANE);
+      //proj.setInputCloud (cloud_cluster);
+      //proj.setModelCoefficients (coefficients);
+      //proj.filter (*projected_cloud_cluster);
+      //*projected_cloud_clusters += (*projected_cloud_cluster);
+      
+
+      //@ store the cluster in marking
+      pct_marking_->addPCPtr(centroid.x, centroid.y, centroid.z, cloud_cluster, coefficients);
+
+
+    }
+    else{
+      RCLCPP_DEBUG(node_->get_logger().get_child(name_), "Reject cluster with size: %lu at %f,%f,%f", cloud_cluster->points.size(), centroid.x, centroid.y, centroid.z);
+    }
+    
+  }
+
+  if(pub_current_projected_->get_subscription_count()>0){
+    sensor_msgs::msg::PointCloud2 ros_pc2_msg;
+    projected_cloud_clusters->header.frame_id = gbl_utils_->getGblFrame();
+    pcl::toROSMsg(*projected_cloud_clusters, ros_pc2_msg);
+    pub_current_projected_->publish(ros_pc2_msg);
+  }
+
+  if(pub_current_segmentation_->get_subscription_count()>0){
+    sensor_msgs::msg::PointCloud2 ros_pc2_msg;
+    cloud_clusters->header.frame_id = gbl_utils_->getGblFrame();
+    pcl::toROSMsg(*cloud_clusters, ros_pc2_msg);
+    pub_current_segmentation_->publish(ros_pc2_msg);
+  }
 }
 
 void DepthCameraLayer::aggregatePointCloudFromObservations(const pcl::PointCloud<pcl::PointXYZI>::Ptr& resulting_pcl)
