@@ -106,9 +106,9 @@ void MultiLayerSpinningLidar::onInitialize()
   clock_ = node_->get_clock();
   last_observation_time_ = clock_->now();
 
-  node_->declare_parameter(name_ + ".resolution", rclcpp::ParameterValue(0.0));
-  node_->get_parameter(name_ + ".resolution", resolution_);
-  RCLCPP_INFO(node_->get_logger().get_child(name_), "resolution: %.2f", resolution_);
+  node_->declare_parameter(name_ + ".xy_resolution", rclcpp::ParameterValue(0.0));
+  node_->get_parameter(name_ + ".xy_resolution", resolution_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "xy_resolution: %.2f", resolution_);
 
   node_->declare_parameter(name_ + ".height_resolution", rclcpp::ParameterValue(0.0));
   node_->get_parameter(name_ + ".height_resolution", height_resolution_);
@@ -155,7 +155,7 @@ void MultiLayerSpinningLidar::onInitialize()
 
   pub_casting_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("tracing_objects", 2);
 
-  pct_marking_ = std::make_shared<Marking>(&dGraph_, gbl_utils_->getInflationRadius(), shared_data_->kdtree_ground_);
+  pct_marking_ = std::make_shared<Marking>(&dGraph_, gbl_utils_->getInflationRadius(), shared_data_->kdtree_ground_, resolution_, height_resolution_);
   get_first_tf_ = false;
   
   marking_pub_cb_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -190,7 +190,8 @@ void MultiLayerSpinningLidar::cbSensor(const sensor_msgs::msg::PointCloud2::Shar
 
   get_first_tf_ = true;
   
-  
+  RCLCPP_INFO_THROTTLE(node_->get_logger().get_child(name_), *clock_, 60000, "Receiving Lidar topic: %s", topic_.c_str());
+
   //@Justify affine 3d
   //Eigen::Affine3d a = tf2::transformToEigen(trans_gbl2b_);
   //Eigen::Affine3d b = tf2::transformToEigen(trans_b2s_);
@@ -200,8 +201,6 @@ void MultiLayerSpinningLidar::cbSensor(const sensor_msgs::msg::PointCloud2::Shar
   //RCLCPP_INFO(node_->get_logger().get_child(name_), "trans: %f,%f,%f ---> %f,%f,%f", c.translation().x(),c.translation().y(),c.translation().z(), d.translation().x(),d.translation().y(),d.translation().z());
   //RCLCPP_INFO_STREAM(node_->get_logger().get_child(name_), "Rotation c: " << c.rotation());
   //RCLCPP_INFO_STREAM(node_->get_logger().get_child(name_), "Rotation d: " << d.rotation());
-  
-
   
   Eigen::Affine3d trans_b2s_af3 = tf2::transformToEigen(trans_b2s_);
   pcl::transformPointCloud(*pcl_msg, *pcl_msg, trans_b2s_af3);
@@ -374,10 +373,7 @@ void MultiLayerSpinningLidar::selfMark(){
       
 
       //@ store the cluster in marking
-      int x = centroid.x/resolution_;
-      int y = centroid.y/resolution_;
-      int z = centroid.z/height_resolution_;
-      pct_marking_->addPCPtr(x, y, z, cloud_cluster, coefficients);
+      pct_marking_->addPCPtr(centroid.x, centroid.y, centroid.z, cloud_cluster, coefficients);
 
 
     }
@@ -434,7 +430,7 @@ void MultiLayerSpinningLidar::selfClear(){
   sensor_current_observation_.reset(new pcl::PointCloud<pcl::PointXYZI>);
   //@ We queue all observation here for later clearing and remarking value
   //@ This is very important!!!!!!!!
-  std::vector<marking_voxel> current_observation_ptr;
+  std::vector<perception_3d::marking_voxel> current_observation_ptr;
 
   int round_robot_base_x_min = ((trans_gbl2b_.transform.translation.x-perception_window_size_)/resolution_);
   int round_robot_base_x_max = ((trans_gbl2b_.transform.translation.x+perception_window_size_)/resolution_);
@@ -481,7 +477,7 @@ void MultiLayerSpinningLidar::selfClear(){
 
         if(!isinLidarObservation(pt)){
   
-          marking_voxel a_voxel;
+          perception_3d::marking_voxel a_voxel;
           a_voxel.x = (*it_x).first;
           a_voxel.y = (*it_y).first;
           a_voxel.z = (*it_z).first;
@@ -514,7 +510,7 @@ void MultiLayerSpinningLidar::selfClear(){
 
           //Hit obstacle when ray tracing, so we skip clearing->meaning that we add this frame to observation
           if(skip_clearing){
-            marking_voxel a_voxel;
+            perception_3d::marking_voxel a_voxel;
             a_voxel.x = (*it_x).first;
             a_voxel.y = (*it_y).first;
             a_voxel.z = (*it_z).first;
@@ -531,7 +527,7 @@ void MultiLayerSpinningLidar::selfClear(){
           if(kdtree_last_observation->radiusSearch(pt, 0.2, id, sqdist)>1){
             *pc_current_window_ += (*(*it_z).second.first);
 
-            marking_voxel a_voxel;
+            perception_3d::marking_voxel a_voxel;
             a_voxel.x = (*it_x).first;
             a_voxel.y = (*it_y).first;
             a_voxel.z = (*it_z).first;
@@ -748,7 +744,7 @@ void MultiLayerSpinningLidar::resetdGraph(){
   RCLCPP_INFO(node_->get_logger().get_child(name_), "%s starts to reset dynamic graph.", name_.c_str());
   dGraph_.clear();
   dGraph_.initial(shared_data_->static_ground_size_, gbl_utils_->getMaxObstacleDistance());
-  pct_marking_ = std::make_shared<Marking>(&dGraph_, gbl_utils_->getInflationRadius(),shared_data_->kdtree_ground_);
+  pct_marking_ = std::make_shared<Marking>(&dGraph_, gbl_utils_->getInflationRadius(), shared_data_->kdtree_ground_, resolution_, height_resolution_);
   RCLCPP_INFO(node_->get_logger().get_child(name_), "%s done dynamic graph regeneration.", name_.c_str());
 }
 

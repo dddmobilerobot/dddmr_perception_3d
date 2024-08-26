@@ -31,7 +31,8 @@
 #ifndef PERCEPTION_3D_DEPTH_CAMERA_LAYER_H_
 #define PERCEPTION_3D_DEPTH_CAMERA_LAYER_H_
 
-#include <perception_3d/sensor.h> 
+#include <perception_3d/sensor.h>
+#include <perception_3d/cluster_marking.h>
 #include <perception_3d/depth_camera/depth_camera_observation_buffer.hpp>
 
 namespace perception_3d
@@ -54,12 +55,19 @@ class DepthCameraLayer: public Sensor{
 
   private:
     
+    std::shared_ptr<perception_3d::Marking> pct_marking_;
+
     rclcpp::Clock::SharedPtr clock_;
+    
     void cbSensor(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
                                     const std::shared_ptr<perception_3d::DepthCameraObservationBuffer>& buffer);
-                                    
+    void aggregatePointCloudFromObservations(const pcl::PointCloud<pcl::PointXYZI>::Ptr& resulting_pcl)  ;
+
     std::map<std::string, rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> sub_pc_map_; 
-    std::map<std::string, std::shared_ptr<perception_3d::DepthCameraObservationBuffer> > observation_buffers_;
+    std::map<std::string, std::shared_ptr<perception_3d::DepthCameraObservationBuffer>> observation_buffers_;
+    
+    bool is_local_planner_;
+    double resolution_, height_resolution_;
 
 };
 

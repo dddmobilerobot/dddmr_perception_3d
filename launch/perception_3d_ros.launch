@@ -13,8 +13,9 @@
 
   <!--- TF -->
   <node pkg="tf2_ros" exec="static_transform_publisher" name="map2baselink" args="1.0 0 0.0 0.0 0.0 0.0 /map /base_link" />
-  <node pkg="tf2_ros" exec="static_transform_publisher" name="baselink2cameralink" args="1.0 0 0.0 0.0 0.0 0.0 /base_link /camera_link" />
-
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="baselink2laserlink" args="0.5 0 0.5 0.0 0.0 0.0 /base_link /laser_link" />
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="baselink2cameralink" args="0.5 0 0.4 0.0 0.0 0.0 /base_link /camera_link" />
+  
   <let name="rviz_config" value="$(find-pkg-share perception_3d)/rviz/zone_demo.rviz"/>
   <node name="rviz2" pkg="rviz2" exec="rviz2" args="-d $(var rviz_config)"/>
 

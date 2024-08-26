@@ -33,7 +33,6 @@
 
 // STL
 #include <vector>
-#include <list>
 #include <string>
 #include <chrono>
 #include <memory>
@@ -45,10 +44,16 @@
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+
 // Observation
 #include <perception_3d/depth_camera/depth_camera_observation.h>
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <pcl/filters/voxel_grid.h>
+
+// This is for euclidean distance segmentation
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/segmentation/extract_clusters.h>
+#include <pcl/filters/extract_indices.h>
 
 namespace perception_3d
 {
@@ -83,16 +88,6 @@ public:
 
   bool isCurrent() const;
 
-  inline void lock()
-  {
-    lock_.lock();
-  }
-
-  inline void unlock()
-  {
-    lock_.unlock();
-  }
-
   void resetLastUpdated();
 
 
@@ -120,7 +115,7 @@ private:
   rclcpp::Logger logger_;
 
 
-  std::list<perception_3d::DepthCameraObservation> observation_list_;
+  std::vector<perception_3d::DepthCameraObservation> observation_vector_;
   std::mutex lock_;  ///< @brief A lock for accessing data in callbacks safely
 
   /// Adaptive height change

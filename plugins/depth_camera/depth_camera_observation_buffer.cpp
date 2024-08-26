@@ -77,7 +77,9 @@ DepthCameraObservationBuffer::~DepthCameraObservationBuffer()
 void DepthCameraObservationBuffer::bufferCloud(const sensor_msgs::msg::PointCloud2& cloud)
 {
   
-  observation_list_.push_front(DepthCameraObservation(cloud));
+  std::unique_lock<std::mutex> lock(lock_);
+
+  observation_vector_.push_back(DepthCameraObservation(cloud));
 
   std::string origin_frame = sensor_frame_ == "" ? cloud.header.frame_id : sensor_frame_;
   
@@ -101,9 +103,9 @@ void DepthCameraObservationBuffer::bufferCloud(const sensor_msgs::msg::PointClou
   //@ get af3 to convert observation to baselink frame
   Eigen::Affine3d trans_b2s_af3 = tf2::transformToEigen(b2s_);
   //@ raw_cloud is XYZ, convert it to XYZI so in the future we can extend features leverage intensity
-  pcl::transformPointCloud(*observation_list_.front().raw_cloud_, *observation_list_.front().raw_cloud_, trans_b2s_af3);
+  pcl::transformPointCloud(*observation_vector_.back().raw_cloud_, *observation_vector_.back().raw_cloud_, trans_b2s_af3);
 
-  for (auto it=observation_list_.front().raw_cloud_->points.begin();it!=observation_list_.front().raw_cloud_->points.end();it++)
+  for (auto it=observation_vector_.back().raw_cloud_->points.begin();it!=observation_vector_.back().raw_cloud_->points.end();it++)
   {
     //@ super near filter, basically, filter out 0,0.0 point
     if ((*it).z <= max_obstacle_height_ && (*it).z >= min_obstacle_height_)
@@ -113,100 +115,100 @@ void DepthCameraObservationBuffer::bufferCloud(const sensor_msgs::msg::PointClou
       tmp_pt.y = (*it).y;
       tmp_pt.z = (*it).z;
       tmp_pt.intensity = 0;
-      observation_list_.front().cloud_->push_back(tmp_pt);
+      observation_vector_.back().cloud_->push_back(tmp_pt);
     }
   }
 
-  /// Check the cloud size 
-  long unsigned int cloud_size_after_min_max_obstacle = observation_list_.front().cloud_->size();
+  //@ Check the cloud size 
+  long unsigned int cloud_size_after_min_max_obstacle = observation_vector_.back().cloud_->size();
   if(cloud_size_after_min_max_obstacle >20000)
   {
     pcl::VoxelGrid<pcl::PointXYZI> sor;
-    sor.setInputCloud (observation_list_.front().cloud_);
+    sor.setInputCloud (observation_vector_.back().cloud_);
     sor.setLeafSize (0.05, 0.05, 0.05);
-    sor.filter (*observation_list_.front().cloud_);
-    RCLCPP_WARN_THROTTLE(logger_, *clock_, 5000, "Point cloud size filtered from min-max obstacle height is: %lu, voxelize it to: %lu", cloud_size_after_min_max_obstacle, observation_list_.front().cloud_->points.size());
+    sor.filter (*observation_vector_.back().cloud_);
+    RCLCPP_WARN_THROTTLE(logger_, *clock_, 5000, "Point cloud size filtered from min-max obstacle height is: %lu, voxelize it to: %lu", cloud_size_after_min_max_obstacle, observation_vector_.back().cloud_->points.size());
   }
 
-  // given these observations come from sensors... we'll need to store the origin pt of the sensor
+  //@ given these observations come from sensors... we'll need to store the origin pt of the sensor
   geometry_msgs::msg::TransformStamped m2s; //map2sensor
   m2s = tf2Buffer_->lookupTransform(global_frame_, origin_frame, tf2::TimePointZero, tf2::durationFromSec(0.5));
-  observation_list_.front().origin_.x = m2s.transform.translation.x;
-  observation_list_.front().origin_.y = m2s.transform.translation.y;
-  observation_list_.front().origin_.z = m2s.transform.translation.z;
+  observation_vector_.back().origin_.x = m2s.transform.translation.x;
+  observation_vector_.back().origin_.y = m2s.transform.translation.y;
+  observation_vector_.back().origin_.z = m2s.transform.translation.z;
 
-  /// Update camera parameters
-  observation_list_.front().min_detect_distance_ = min_detect_distance_;
-  observation_list_.front().max_detect_distance_ = max_detect_distance_;
-  observation_list_.front().FOV_W_ = FOV_W_;
-  observation_list_.front().FOV_V_ = FOV_V_;
+  //@ Update camera parameters
+  observation_vector_.back().min_detect_distance_ = min_detect_distance_;
+  observation_vector_.back().max_detect_distance_ = max_detect_distance_;
+  observation_vector_.back().FOV_W_ = FOV_W_;
+  observation_vector_.back().FOV_V_ = FOV_V_;
 
-  /// Find frustum vertex (8 points) and transform it to global.
-  /// !!! Frustum vertex is usually based on camera_link frame (realsense).
-  observation_list_.front().findFrustumVertex();
+  //@ Find frustum vertex (8 points) and transform it to global.
+  //@ !!! Frustum vertex is usually based on camera_link frame (realsense).
+  observation_vector_.back().findFrustumVertex();
 
-  pcl_conversions::toPCL(cloud.header.stamp, observation_list_.front().frustum_->header.stamp);
-  observation_list_.front().frustum_->header.frame_id = origin_frame;
+  pcl_conversions::toPCL(cloud.header.stamp, observation_vector_.back().frustum_->header.stamp);
+  observation_vector_.back().frustum_->header.frame_id = origin_frame;
 
-  //@get af3 to convert frustum to globl frame
+  //@ get af3 to convert frustum to globl frame
   Eigen::Affine3d trans_m2s_af3 = tf2::transformToEigen(m2s);
-  /// ToDo: Remove dependency on pcl_ros to transform the pointcloud
-  pcl::transformPointCloud(*observation_list_.front().frustum_, *observation_list_.front().frustum_, trans_m2s_af3);
+  //@ ToDo: Remove dependency on pcl_ros to transform the pointcloud
+  pcl::transformPointCloud(*observation_vector_.back().frustum_, *observation_vector_.back().frustum_, trans_m2s_af3);
 
-  observation_list_.front().frustum_->header.frame_id = global_frame_;
+  observation_vector_.back().frustum_->header.frame_id = global_frame_;
   
-  /// Find frustum normal and plane, note that the planes/normals are in global frame
-  /// !!! findFrustumNormal() will assign BRNear_&&TLFar_  which are both in global frame
-  observation_list_.front().findFrustumNormal();
-  observation_list_.front().findFrustumPlane();
-  pcl_conversions::toPCL(clock_->now(), observation_list_.front().cloud_->header.stamp);
-  observation_list_.front().cloud_->header.frame_id = global_frame_;
-  // if the update was successful, we want to update the last updated time
-  resetLastUpdated();
+  //@ Find frustum normal and plane, note that the planes/normals are in global frame
+  //@ !!! findFrustumNormal() will assign BRNear_&&TLFar_  which are both in global frame
+  observation_vector_.back().findFrustumNormal();
+  observation_vector_.back().findFrustumPlane();
+  pcl_conversions::toPCL(clock_->now(), observation_vector_.back().cloud_->header.stamp);
+  observation_vector_.back().cloud_->header.frame_id = global_frame_;
 
-  // we'll also remove any stale observations from the list
+  //@ if the update was successful, we want to update the last updated time
+  resetLastUpdated();
+  //@ we'll also remove any stale observations from the vector
   purgeStaleObservations();
 }
 
 // returns a copy of the observations
 void DepthCameraObservationBuffer::getObservations(std::vector<perception_3d::DepthCameraObservation>& observations)
 {
- 
+  std::unique_lock<std::mutex> lock(lock_);
   // first... let's make sure that we don't have any stale observations
   purgeStaleObservations();
-
   // now we'll just copy the observations for the caller
-  std::list<DepthCameraObservation>::iterator obs_it;
-  for (obs_it = observation_list_.begin(); obs_it != observation_list_.end(); ++obs_it)
+  for (auto obs_it = observation_vector_.begin(); obs_it != observation_vector_.end(); ++obs_it)
   {
     observations.push_back(*obs_it);
   }
+
 }
 
 void DepthCameraObservationBuffer::purgeStaleObservations()
 {
 
-  if (!observation_list_.empty())
+  if (!observation_vector_.empty())
   {
-    std::list<DepthCameraObservation>::iterator obs_it = observation_list_.begin();
     // if we're keeping observations for no time... then we'll only keep one observation
     if (rclcpp::Duration::from_seconds(observation_persistence_) == rclcpp::Duration::from_seconds(0.0))
     {
-      observation_list_.erase(++obs_it, observation_list_.end());
+      auto last_observation = observation_vector_.back();
+      observation_vector_.clear();
+      observation_vector_.push_back(last_observation);
       return;
     }
 
     // otherwise... we'll have to loop through the observations to see which ones are stale
-    for (obs_it = observation_list_.begin(); obs_it != observation_list_.end(); ++obs_it)
+    for (auto obs_it = observation_vector_.begin(); obs_it != observation_vector_.end();)
     {
       perception_3d::DepthCameraObservation& obs = *obs_it;
-
       const rclcpp::Duration time_diff = last_updated_ - pcl_conversions::fromPCL(obs.cloud_->header).stamp;
-
       if ((last_updated_ - pcl_conversions::fromPCL(obs.cloud_->header).stamp) > rclcpp::Duration::from_seconds(observation_persistence_))
       {
-        observation_list_.erase(obs_it, observation_list_.end());
-        return;
+        observation_vector_.erase(obs_it++);
+      }
+      else{
+        ++obs_it;
       }
     }
   }

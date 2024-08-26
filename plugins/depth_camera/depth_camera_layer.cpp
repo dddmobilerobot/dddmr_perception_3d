@@ -56,12 +56,26 @@ void DepthCameraLayer::onInitialize()
   
   clock_ = node_->get_clock();
 
+  node_->declare_parameter(name_ + ".is_local_planner", rclcpp::ParameterValue(false));
+  node_->get_parameter(name_ + ".is_local_planner", is_local_planner_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "is_local_planner: %d", is_local_planner_);
+
+  node_->declare_parameter(name_ + ".xy_resolution", rclcpp::ParameterValue(0.0));
+  node_->get_parameter(name_ + ".xy_resolution", resolution_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "xy_resolution: %.2f", resolution_);
+
+  node_->declare_parameter(name_ + ".height_resolution", rclcpp::ParameterValue(0.0));
+  node_->get_parameter(name_ + ".height_resolution", height_resolution_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "height_resolution: %.2f", height_resolution_);
+  
+  pct_marking_ = std::make_shared<Marking>(&dGraph_, gbl_utils_->getInflationRadius(), shared_data_->kdtree_ground_, resolution_, height_resolution_);
+
   std::string topics_string;
   node_->declare_parameter(name_ + ".observation_sources", rclcpp::ParameterValue(""));
   node_->get_parameter(name_ + ".observation_sources", topics_string);
   RCLCPP_INFO(node_->get_logger().get_child(name_), "Subscribed to Topics: %s", topics_string.c_str());
   std::stringstream ss(topics_string);
-
+  
   std::string source;
   while (ss >> source) {
     
@@ -147,9 +161,7 @@ void DepthCameraLayer::onInitialize()
 void DepthCameraLayer::cbSensor(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
                                     const std::shared_ptr<perception_3d::DepthCameraObservationBuffer>& buffer)
 {
-  buffer->lock();
   buffer->bufferCloud(*msg);
-  buffer->unlock();
 }
 
 void DepthCameraLayer::selfClear(){
@@ -158,21 +170,47 @@ void DepthCameraLayer::selfClear(){
 }
 
 void DepthCameraLayer::selfMark(){
+  
+  if(is_local_planner_){return;}
 
-}
+  if(!shared_data_->is_static_layer_ready_)
+    return;
 
-pcl::PointCloud<pcl::PointXYZI>::Ptr DepthCameraLayer::getObservation(){
-  pcl::PointCloud<pcl::PointXYZI>::Ptr dpc;
-  dpc.reset(new pcl::PointCloud<pcl::PointXYZI>());
-  return dpc;
-}
-
-void DepthCameraLayer::resetdGraph(){
+  if(!shared_data_->isAllUpdated()){
+    return;
+  }
   
 }
 
+void DepthCameraLayer::aggregatePointCloudFromObservations(const pcl::PointCloud<pcl::PointXYZI>::Ptr& resulting_pcl)
+{
+  std::vector<perception_3d::DepthCameraObservation> observations;
+  for(auto it=observation_buffers_.begin(); it!=observation_buffers_.end();it++)
+  {
+    (*it).second->getObservations(observations);
+  }
+  for(auto it=observations.begin(); it!=observations.end();it++){
+    *resulting_pcl += (*(*it).cloud_);
+  }
+}
+
+pcl::PointCloud<pcl::PointXYZI>::Ptr DepthCameraLayer::getObservation(){
+  sensor_current_observation_.reset(new pcl::PointCloud<pcl::PointXYZI>());
+  aggregatePointCloudFromObservations(sensor_current_observation_);
+  return sensor_current_observation_;
+}
+
+void DepthCameraLayer::resetdGraph(){
+
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "%s starts to reset dynamic graph.", name_.c_str());
+  dGraph_.clear();
+  dGraph_.initial(shared_data_->static_ground_size_, gbl_utils_->getMaxObstacleDistance());
+  pct_marking_ = std::make_shared<Marking>(&dGraph_, gbl_utils_->getInflationRadius(), shared_data_->kdtree_ground_, resolution_, height_resolution_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "%s done dynamic graph regeneration.", name_.c_str());
+}
+
 double DepthCameraLayer::get_dGraphValue(const unsigned int index){
-  return 9999999;
+  return pct_marking_->get_dGraphValue(index);
 }
 
 bool DepthCameraLayer::isCurrent(){

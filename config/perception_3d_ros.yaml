@@ -8,7 +8,7 @@ perception_3d:
     inflation_radius: 1.5
     sensors_collected_frequency: 5.0
     dgraph_publish_frequency: 1.0
-    plugins: ["map", "path_blocked_strategy", "depth_camera","speed_limit_layer", "no_entry_layer"]
+    plugins: ["map", "path_blocked_strategy", "lidar", "depth_camera", "speed_limit_layer", "no_entry_layer"]
     map:
       plugin: "perception_3d::StaticLayer"
       use_adaptive_connection: false #If true: the neighbors of node is sparse, it will automatically increase search radius.
@@ -23,7 +23,7 @@ perception_3d:
       check_radius: 0.3
     lidar:
       plugin: "perception_3d::MultiLayerSpinningLidar"
-      topic: "segmented_cloud_pure"
+      topic: "lslidar_point_cloud"
       pub_gbl_marking_for_visualization: false
       vertical_FOV_top: 5.0
       vertical_FOV_bottom: -15.0
@@ -34,7 +34,7 @@ perception_3d:
       euclidean_cluster_extraction_tolerance: 0.3
       euclidean_cluster_extraction_min_cluster_size: 1
       euclidean_cluster_extraction_max_cluster_size: 100
-      resolution: 0.05
+      xy_resolution: 0.05
       height_resolution: 0.2
       marking_height: 1.0
       perception_window_size: 3.0 #the window for marking/clearing in meter, we dont casting to maximum range of the sensor even it is gbl map
@@ -55,5 +55,6 @@ perception_3d:
       camera_right:
         topic: "/camera/camera/depth/color/points"
         sensor_frame: "camera_link"
+        is_local_planner: false
         observation_persistence: 0.0
         expected_update_rate: 0.1

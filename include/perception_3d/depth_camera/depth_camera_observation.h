@@ -39,6 +39,12 @@
 namespace perception_3d
 {
 
+class PointCloudCluster{
+
+  public:
+    pcl::PointCloud<pcl::PointXYZI> point_cloud_;
+    pcl::PointXYZ centroid_;
+};
 
 class DepthCameraObservation
 {
@@ -57,15 +63,19 @@ public:
   void findFrustumPlane();
 
 
-  /// These points are for frustum check
+
   geometry_msgs::msg::Point origin_;
+  //@ cloud_ is in global frame after min/max height check and distance check
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_;
+  //@ raw_cloud_ is in sensor frame
   pcl::PointCloud<pcl::PointXYZ>::Ptr raw_cloud_;
+  //@ everything related to frustum is in global frame
   pcl::PointCloud<pcl::PointXYZ>::Ptr frustum_;
   pcl::PointCloud<pcl::PointXYZ>::Ptr frustum_normal_;
   std::vector<Eigen::Vector4f> frustum_plane_equation_;
+  //@ clusters storage
+  std::vector<perception_3d::PointCloudCluster> clusters_;
 
-  /// These parameter is essential for depth camera
   double FOV_V_;
   double FOV_W_;
   double min_detect_distance_;
