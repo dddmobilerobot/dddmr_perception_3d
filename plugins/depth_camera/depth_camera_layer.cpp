@@ -49,12 +49,18 @@ DepthCameraLayer::DepthCameraLayer(){
 }
 
 DepthCameraLayer::~DepthCameraLayer(){
+  pct_marking_.reset();
+  frustum_utils_.reset();
 }
 
 void DepthCameraLayer::onInitialize()
 { 
   
   clock_ = node_->get_clock();
+  
+  marking_height_ = -1.0;
+  pcl_msg_gbl_.reset(new pcl::PointCloud<pcl::PointXYZI>);
+  pc_current_window_.reset(new pcl::PointCloud<pcl::PointXYZI>);
 
   node_->declare_parameter(name_ + ".is_local_planner", rclcpp::ParameterValue(false));
   node_->get_parameter(name_ + ".is_local_planner", is_local_planner_);
@@ -62,19 +68,41 @@ void DepthCameraLayer::onInitialize()
 
   node_->declare_parameter(name_ + ".xy_resolution", rclcpp::ParameterValue(0.0));
   node_->get_parameter(name_ + ".xy_resolution", resolution_);
-  RCLCPP_INFO(node_->get_logger().get_child(name_), "xy_resolution: %.2f", resolution_);
+  if(resolution_<=0)
+    RCLCPP_ERROR(node_->get_logger().get_child(name_), "xy_resolution: %.2f", resolution_);
+  else
+    RCLCPP_INFO(node_->get_logger().get_child(name_), "xy_resolution: %.2f", resolution_);
 
   node_->declare_parameter(name_ + ".height_resolution", rclcpp::ParameterValue(0.0));
   node_->get_parameter(name_ + ".height_resolution", height_resolution_);
-  RCLCPP_INFO(node_->get_logger().get_child(name_), "height_resolution: %.2f", height_resolution_);
+  if(height_resolution_<=0)
+    RCLCPP_ERROR(node_->get_logger().get_child(name_), "height_resolution: %.2f", height_resolution_);
+  else
+    RCLCPP_INFO(node_->get_logger().get_child(name_), "height_resolution: %.2f", height_resolution_);
+
+  node_->declare_parameter(name_ + ".perception_window_size", rclcpp::ParameterValue(0.0));
+  node_->get_parameter(name_ + ".perception_window_size", perception_window_size_);
+  if(perception_window_size_<=0)
+    RCLCPP_ERROR(node_->get_logger().get_child(name_), "perception_window_size: %.2f", perception_window_size_);
+  else
+    RCLCPP_INFO(node_->get_logger().get_child(name_), "perception_window_size: %.2f", perception_window_size_);
 
   node_->declare_parameter(name_ + ".segmentation_ignore_ratio", rclcpp::ParameterValue(0.0));
   node_->get_parameter(name_ + ".segmentation_ignore_ratio", segmentation_ignore_ratio_);
   RCLCPP_INFO(node_->get_logger().get_child(name_), "segmentation_ignore_ratio: %.2f", segmentation_ignore_ratio_);
 
+  node_->declare_parameter(name_ + ".euclidean_cluster_extraction_tolerance", rclcpp::ParameterValue(0.1));
+  node_->get_parameter(name_ + ".euclidean_cluster_extraction_tolerance", euclidean_cluster_extraction_tolerance_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "euclidean_cluster_extraction_tolerance: %.2f", euclidean_cluster_extraction_tolerance_);  
+
+  node_->declare_parameter(name_ + ".euclidean_cluster_extraction_min_cluster_size", rclcpp::ParameterValue(1));
+  node_->get_parameter(name_ + ".euclidean_cluster_extraction_min_cluster_size", euclidean_cluster_extraction_min_cluster_size_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "euclidean_cluster_extraction_min_cluster_size: %d", euclidean_cluster_extraction_min_cluster_size_);  
+  
   //@ create cluster marking object
   pct_marking_ = std::make_shared<Marking>(&dGraph_, gbl_utils_->getInflationRadius(), shared_data_->kdtree_ground_, resolution_, height_resolution_);
-  
+  frustum_utils_ = std::make_shared<FrustumUtils>();
+
   //@ initial all publishers
   pub_current_observation_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/current_observation", 2);
   pub_current_window_marking_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/current_window_marking", 2);
@@ -149,7 +177,8 @@ void DepthCameraLayer::onInitialize()
     node_->declare_parameter(sub_name + ".FOV_V", rclcpp::ParameterValue(1.0));
     node_->get_parameter(sub_name + ".FOV_V", FOV_V);
     RCLCPP_INFO(node_->get_logger().get_child(name_), "FOV_V: %.2f", FOV_V);
-
+    
+    marking_height_ = std::max(marking_height_, max_obstacle_height);
     // create an observation buffer
     
     observation_buffers_[source]=
@@ -179,8 +208,217 @@ void DepthCameraLayer::cbSensor(const sensor_msgs::msg::PointCloud2::SharedPtr m
 }
 
 void DepthCameraLayer::selfClear(){
-  bool a = isCurrent();
-  RCLCPP_INFO(node_->get_logger().get_child(name_), "%d", a);
+
+
+  if(is_local_planner_){return;}
+
+  if(!shared_data_->is_static_layer_ready_)
+    return;
+
+  if(shared_data_->map_require_update_[name_]){
+    //@ need to regenerate dynamic graph
+    resetdGraph();
+    shared_data_->map_require_update_[name_] = false;
+  }
+
+  try
+  {
+    trans_gbl2b_ = gbl_utils_->tf2Buffer()->lookupTransform(
+        gbl_utils_->getGblFrame(), gbl_utils_->getRobotFrame(), tf2::TimePointZero);
+  }
+  catch (tf2::TransformException& e)
+  {
+    RCLCPP_INFO(node_->get_logger().get_child(name_), "Failed to get transforms: %s", e.what());
+    return;
+  }
+
+  pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtree_last_observation(new pcl::KdTreeFLANN<pcl::PointXYZI>());
+  bool observation_clear = false;
+
+  pcl_msg_gbl_.reset(new pcl::PointCloud<pcl::PointXYZI>());
+  aggregatePointCloudFromObservations(pcl_msg_gbl_);
+
+  if(pcl_msg_gbl_->points.size()>5){
+    kdtree_last_observation->setInputCloud(pcl_msg_gbl_);
+    observation_clear = false;
+  }
+  else{
+    observation_clear = true;
+  }
+  
+  //@ push latest observation buffer into frustum utils, so we get latest frustum for clearing
+  frustum_utils_->setObservationBuffers(observation_buffers_);
+
+  visualization_msgs::msg::MarkerArray markerArray;
+  pc_current_window_.reset(new pcl::PointCloud<pcl::PointXYZI>);
+
+  //@ We queue all observation here for later clearing and remarking value
+  //@ This is very important!!!!!!!!
+  std::vector<perception_3d::marking_voxel> current_observation_ptr;
+  
+  //@ find robot location and base on perception window, we extract all nearby marked clusters
+  int round_robot_base_x_min = ((trans_gbl2b_.transform.translation.x-perception_window_size_)/resolution_);
+  int round_robot_base_x_max = ((trans_gbl2b_.transform.translation.x+perception_window_size_)/resolution_);
+  int round_robot_base_y_min = ((trans_gbl2b_.transform.translation.y-perception_window_size_)/resolution_);
+  int round_robot_base_y_max = ((trans_gbl2b_.transform.translation.y+perception_window_size_)/resolution_);
+
+  //@ TODO: make this threshold more adaptive and robust
+  int round_robot_base_z_min = ((trans_gbl2b_.transform.translation.z-marking_height_)/height_resolution_);
+  int round_robot_base_z_max = ((trans_gbl2b_.transform.translation.z+marking_height_)/height_resolution_);
+  //@RCLCPP_INFO(node_->get_logger(), "Search region at x: %d to %d, y: %d to %d, z: %d to %d", 
+  //  round_robot_base_x_min, round_robot_base_x_max, round_robot_base_y_min, round_robot_base_y_max, round_robot_base_z_min, round_robot_base_z_max);
+
+  //@Find min/max iterator
+  //auto it_x_min = marking_.lower_bound(round_robot_base_x_min);
+  //auto it_x_max = marking_.lower_bound(round_robot_base_x_max);
+  auto it_x_min = pct_marking_->getXIter(round_robot_base_x_min);
+  auto it_x_max = pct_marking_->getXIter(round_robot_base_x_max);
+  
+  if(it_x_min==pct_marking_->getEnd() && it_x_min==it_x_max)
+    return;
+
+  for(auto it_x = it_x_min; it_x!=it_x_max; it_x++){
+    auto it_y_min = (*it_x).second.lower_bound(round_robot_base_y_min);
+    auto it_y_max = (*it_x).second.lower_bound(round_robot_base_y_max);
+    if(it_y_min==(*it_x).second.end() && it_y_min==it_y_max)
+      continue;
+
+    for(auto it_y = it_y_min; it_y!=it_y_max; it_y++){
+      if((*it_x).second[(*it_y).first].empty())
+        continue;
+      //@ A marked point exists, loop z for sight check
+      auto it_z_min = (*it_x).second[(*it_y).first].lower_bound(round_robot_base_z_min);
+      auto it_z_max = (*it_x).second[(*it_y).first].lower_bound(round_robot_base_z_max);
+      if(it_z_min==(*it_x).second[(*it_y).first].end() && it_z_min==it_z_max)
+        continue;
+
+      //@ fast segmentation of z axis
+      for(auto it_z = it_z_min; it_z!=it_z_max;it_z++){
+
+        if((*it_z).second.pc_== nullptr){
+          continue;
+        }
+        //RCLCPP_INFO(node_->get_logger(), "ptr copy number %lu", (*it_z).second.first.use_count());
+        pcl::PointXYZI pt;
+        pt.x = (*it_x).first*resolution_;
+        pt.y = (*it_y).first*resolution_;
+        pt.z = (*it_z).first*height_resolution_;
+        pcl::PointCloud<pcl::PointXYZI> casting_check;
+        //@ use kd-tree search to clear, see: https://github.com/tsengapola/costmap_depth_camera
+        //@ In frustums:
+        //@             1. kdtree found something near the marking -> dont clear
+        //@             2. kdtreenot found obstalce near the marking -> clear it
+        if(!frustum_utils_->isinFrustumsObservations(pt)){
+          std::vector<int> id(1);
+          std::vector<float> sqdist(1);
+          if(kdtree_last_observation->radiusSearch(pt, 0.05, id, sqdist, 1)>0){
+            //RCLCPP_INFO(node_->get_logger(), "Obstacles near the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
+            perception_3d::marking_voxel a_voxel;
+            a_voxel.x = (*it_x).first;
+            a_voxel.y = (*it_y).first;
+            a_voxel.z = (*it_z).first;
+            current_observation_ptr.push_back(a_voxel);
+            *pc_current_window_ += (*(*it_z).second.pc_);
+            addCastingMarker(pt, current_observation_ptr.size(), markerArray);
+            continue;
+          }
+          else{
+            //RCLCPP_INFO(node_->get_logger(), "Remove the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
+            pct_marking_->removePCPtr((*it_z).second);
+          }
+        }
+        //@ Not in frustums:
+            //@ 1. if attaches frustums -> clear it
+            //@ 2. Not attach -> 
+                                //@ 2-1. kdtree found something near the marking -> dont clear
+                                //@ 2-2. kdtreenot found obstalce near the marking -> clear it
+        else{
+          if(frustum_utils_->isAttachFRUSTUMs(pt)){
+            //@ Check do all points attach, if all of them attach, clear it
+            bool do_clear = true;
+            for(auto marking_pt=(*it_z).second.pc_->points.begin(); marking_pt!=(*it_z).second.pc_->points.end(); marking_pt++){
+              if(!frustum_utils_->isAttachFRUSTUMs((*marking_pt))){
+                //@ a point does not attach, dont clear
+                do_clear = false;
+                break;
+              }
+            }
+            if(do_clear){
+              //RCLCPP_INFO(node_->get_logger(), "isAttachment: Remove the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
+              pct_marking_->removePCPtr((*it_z).second);
+            }
+            else{
+              //RCLCPP_INFO(node_->get_logger(), "isAttachment: Obstacles near the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
+              perception_3d::marking_voxel a_voxel;
+              a_voxel.x = (*it_x).first;
+              a_voxel.y = (*it_y).first;
+              a_voxel.z = (*it_z).first;
+              current_observation_ptr.push_back(a_voxel);
+              *pc_current_window_ += (*(*it_z).second.pc_);
+              addCastingMarker(pt, current_observation_ptr.size(), markerArray);
+            }
+          }    
+          else{
+            //@ Not attach, so do regular check
+            std::vector<int> id(1);
+            std::vector<float> sqdist(1);
+            if(kdtree_last_observation->radiusSearch(pt, 0.05, id, sqdist, 1)>0){
+              //RCLCPP_INFO(node_->get_logger(), "Not isAttachment: Obstacles near the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
+              perception_3d::marking_voxel a_voxel;
+              a_voxel.x = (*it_x).first;
+              a_voxel.y = (*it_y).first;
+              a_voxel.z = (*it_z).first;
+              current_observation_ptr.push_back(a_voxel);
+              *pc_current_window_ += (*(*it_z).second.pc_);
+              addCastingMarker(pt, current_observation_ptr.size(), markerArray);
+            }
+            else{
+              //@ dealing with concave pc issue
+              bool do_clear = true;
+              for(auto marking_pt=(*it_z).second.pc_->points.begin(); marking_pt!=(*it_z).second.pc_->points.end(); marking_pt++){
+                std::vector<int> id(1);
+                std::vector<float> sqdist(1);
+                if(kdtree_last_observation->radiusSearch((*marking_pt), 0.05, id, sqdist, 1)>0){
+                  //@ a point does not attach, dont clear
+                  do_clear = false;
+                  break;
+                }
+              }
+              if(do_clear){
+                //RCLCPP_INFO(node_->get_logger(), "Not isAttachment: concave test passed, the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
+                pct_marking_->removePCPtr((*it_z).second);
+              }
+              else{
+                //RCLCPP_INFO(node_->get_logger(), "Not isAttachment: concave test failed, Obstacles near the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
+                perception_3d::marking_voxel a_voxel;
+                a_voxel.x = (*it_x).first;
+                a_voxel.y = (*it_y).first;
+                a_voxel.z = (*it_z).first;
+                current_observation_ptr.push_back(a_voxel);
+                *pc_current_window_ += (*(*it_z).second.pc_);
+                addCastingMarker(pt, current_observation_ptr.size(), markerArray);
+              }
+            }
+          } 
+                 
+        }
+      }
+
+    }
+  }
+
+  //pct_marking_->updateCleared(current_observation_ptr);
+  
+  if(pub_casting_->get_subscription_count()>0){
+    pub_casting_->publish(markerArray);
+  }
+
+  if(pub_current_window_marking_->get_subscription_count()>0){
+    sensor_msgs::msg::PointCloud2 ros_pc2_msg;
+    pc_current_window_->header.frame_id = gbl_utils_->getGblFrame();
+    pcl::toROSMsg(*pc_current_window_, ros_pc2_msg);
+    pub_current_window_marking_->publish(ros_pc2_msg);     
+  }
 }
 
 void DepthCameraLayer::selfMark(){
@@ -205,7 +443,6 @@ void DepthCameraLayer::selfMark(){
     return;
   }
 
-  pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_msg_gbl_;
   pcl_msg_gbl_.reset(new pcl::PointCloud<pcl::PointXYZI>());
   aggregatePointCloudFromObservations(pcl_msg_gbl_);
   
@@ -218,16 +455,12 @@ void DepthCameraLayer::selfMark(){
 
   std::vector<pcl::PointIndices> cluster_indices_segmentation;
   pcl::EuclideanClusterExtraction<pcl::PointXYZI> ec_segmentation;
-  double euclidean_cluster_extraction_tolerance_ = 0.1;
-  int euclidean_cluster_extraction_min_cluster_size_ = 1;
-  int euclidean_cluster_extraction_max_cluster_size_ = 10;
   ec_segmentation.setClusterTolerance (euclidean_cluster_extraction_tolerance_);
   ec_segmentation.setMinClusterSize (euclidean_cluster_extraction_min_cluster_size_);
-  ec_segmentation.setMaxClusterSize (euclidean_cluster_extraction_max_cluster_size_);
+  ec_segmentation.setMaxClusterSize (pcl_msg_gbl_->points.size());
   ec_segmentation.setSearchMethod (pc_kdtree);
   ec_segmentation.setInputCloud (pcl_msg_gbl_);
   ec_segmentation.extract (cluster_indices_segmentation);
-
 
   float intensity_cnt = 100;
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_clusters (new pcl::PointCloud<pcl::PointXYZI>);
@@ -268,6 +501,7 @@ void DepthCameraLayer::selfMark(){
     }
 
     //@ Test a cluster is in static. If the cluster is in static, we dont need to add it because we can save memory.
+    //@ Voxelized marking pc so we can boost the speed when later doing concave clearing check
     pcl::VoxelGrid<pcl::PointXYZI> sor;
     sor.setInputCloud (cloud_cluster);
     sor.setLeafSize (0.2f, 0.2f, 0.2f);
@@ -284,7 +518,7 @@ void DepthCameraLayer::selfMark(){
         }
       }      
     }
-
+    
     if(hit<=cloud_cluster->points.size()*segmentation_ignore_ratio_){
 
       //@ Project pc base on robot RPY:
@@ -314,9 +548,8 @@ void DepthCameraLayer::selfMark(){
       
 
       //@ store the cluster in marking
+      //RCLCPP_INFO(node_->get_logger(), "Add marking at: %.2f, %.2f, %.2f", centroid.x, centroid.y, centroid.z);
       pct_marking_->addPCPtr(centroid.x, centroid.y, centroid.z, cloud_cluster, coefficients);
-
-
     }
     else{
       RCLCPP_DEBUG(node_->get_logger().get_child(name_), "Reject cluster with size: %lu at %f,%f,%f", cloud_cluster->points.size(), centroid.x, centroid.y, centroid.z);
@@ -349,6 +582,35 @@ void DepthCameraLayer::aggregatePointCloudFromObservations(const pcl::PointCloud
   for(auto it=observations.begin(); it!=observations.end();it++){
     *resulting_pcl += (*(*it).cloud_);
   }
+}
+
+void DepthCameraLayer::addCastingMarker(const pcl::PointXYZI& pt, size_t id, visualization_msgs::msg::MarkerArray& markerArray){
+
+    //@ Creater marker
+    visualization_msgs::msg::Marker markerEdge;
+    markerEdge.header.frame_id = gbl_utils_->getGblFrame();;
+    markerEdge.header.stamp = clock_->now();
+    markerEdge.action = visualization_msgs::msg::Marker::ADD;
+    //markerEdge.lifetime = ros::Duration(2.0);
+    markerEdge.type = visualization_msgs::msg::Marker::LINE_LIST;
+    markerEdge.pose.orientation.w = 1.0;
+    markerEdge.ns = "edges";
+    markerEdge.scale.x = 0.03;
+    markerEdge.color.r = 0.9; markerEdge.color.g = 1; markerEdge.color.b = 0;
+    markerEdge.color.a = 0.2;
+    //@ mark
+    geometry_msgs::msg::Point p;
+    p.x = pt.x;
+    p.y = pt.y;
+    p.z = pt.z;   
+    markerEdge.points.push_back(p);
+    Eigen::Affine3d trans_gbl2b_af3 = tf2::transformToEigen(trans_gbl2b_);
+    p.x = trans_gbl2b_af3.translation().x();
+    p.y = trans_gbl2b_af3.translation().y();
+    p.z = trans_gbl2b_af3.translation().z();  
+    markerEdge.points.push_back(p);
+    markerEdge.id = id+1;
+    markerArray.markers.push_back(markerEdge);
 }
 
 pcl::PointCloud<pcl::PointXYZI>::Ptr DepthCameraLayer::getObservation(){

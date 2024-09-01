@@ -99,10 +99,6 @@ void MultiLayerSpinningLidar::onInitialize()
   node_->get_parameter(name_ + ".euclidean_cluster_extraction_min_cluster_size", euclidean_cluster_extraction_min_cluster_size_);
   RCLCPP_INFO(node_->get_logger().get_child(name_), "euclidean_cluster_extraction_min_cluster_size: %d", euclidean_cluster_extraction_min_cluster_size_);
 
-  node_->declare_parameter(name_ + ".euclidean_cluster_extraction_max_cluster_size", rclcpp::ParameterValue(100));
-  node_->get_parameter(name_ + ".euclidean_cluster_extraction_max_cluster_size", euclidean_cluster_extraction_max_cluster_size_);
-  RCLCPP_INFO(node_->get_logger().get_child(name_), "euclidean_cluster_extraction_max_cluster_size: %d", euclidean_cluster_extraction_max_cluster_size_);
-
   clock_ = node_->get_clock();
   last_observation_time_ = clock_->now();
 
@@ -280,7 +276,7 @@ void MultiLayerSpinningLidar::selfMark(){
   pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec_segmentation;
   ec_segmentation.setClusterTolerance (euclidean_cluster_extraction_tolerance_);
   ec_segmentation.setMinClusterSize (euclidean_cluster_extraction_min_cluster_size_);
-  ec_segmentation.setMaxClusterSize (euclidean_cluster_extraction_max_cluster_size_);
+  ec_segmentation.setMaxClusterSize (pcl_msg_gbl_->points.size());
   ec_segmentation.setSearchMethod (pc_kdtree);
   ec_segmentation.setInputCloud (pcl_msg_gbl_);
   ec_segmentation.extract (cluster_indices_segmentation);
@@ -431,7 +427,8 @@ void MultiLayerSpinningLidar::selfClear(){
   //@ We queue all observation here for later clearing and remarking value
   //@ This is very important!!!!!!!!
   std::vector<perception_3d::marking_voxel> current_observation_ptr;
-
+  
+  //@ find robot location and base on perception window, we extract all nearby marked clusters
   int round_robot_base_x_min = ((trans_gbl2b_.transform.translation.x-perception_window_size_)/resolution_);
   int round_robot_base_x_max = ((trans_gbl2b_.transform.translation.x+perception_window_size_)/resolution_);
   int round_robot_base_y_min = ((trans_gbl2b_.transform.translation.y-perception_window_size_)/resolution_);
@@ -469,6 +466,11 @@ void MultiLayerSpinningLidar::selfClear(){
 
       //@ fast segmentation of z axis
       for(auto it_z = it_z_min; it_z!=it_z_max;it_z++){
+
+        if((*it_z).second.pc_== nullptr){
+          continue;
+        }
+        
         pcl::PointXYZ pt;
         pt.x = (*it_x).first*resolution_;
         pt.y = (*it_y).first*resolution_;
@@ -482,7 +484,7 @@ void MultiLayerSpinningLidar::selfClear(){
           a_voxel.y = (*it_y).first;
           a_voxel.z = (*it_z).first;
           current_observation_ptr.push_back(a_voxel);
-          *pc_current_window_ += (*(*it_z).second.first);
+          *pc_current_window_ += (*(*it_z).second.pc_);
           addCastingMarker(pt, current_observation_ptr.size(), markerArray);
           continue;
         }
@@ -490,7 +492,9 @@ void MultiLayerSpinningLidar::selfClear(){
           //@ get point cloud along the ray for casting
           bool skip_clearing = false;
           if(!observation_clear){
+            //@ create a pointcloud that actually is a line composed of many descrete points, and then we can check radius along this line
             getCastingPointCloud(pt, casting_check);
+            //@ we loop this "line" and do radius search to see if there is any obstacle, if there is an obstacle, it means this line is blocked, so ray trace fail
             for(auto a_pt=casting_check.points.begin(); a_pt!=casting_check.points.end(); a_pt++){
 
               //@ Create a point for kd-tree
@@ -515,7 +519,7 @@ void MultiLayerSpinningLidar::selfClear(){
             a_voxel.y = (*it_y).first;
             a_voxel.z = (*it_z).first;
             current_observation_ptr.push_back(a_voxel);
-            *pc_current_window_ += (*(*it_z).second.first);
+            *pc_current_window_ += (*(*it_z).second.pc_);
             addCastingMarker(pt, current_observation_ptr.size(), markerArray);
             continue;
           }
@@ -525,7 +529,7 @@ void MultiLayerSpinningLidar::selfClear(){
           std::vector<float> sqdist;
           //@ I am not sure what happen below, looks like I redo check again but the threshold (1) is different
           if(kdtree_last_observation->radiusSearch(pt, 0.2, id, sqdist)>1){
-            *pc_current_window_ += (*(*it_z).second.first);
+            *pc_current_window_ += (*(*it_z).second.pc_);
 
             perception_3d::marking_voxel a_voxel;
             a_voxel.x = (*it_x).first;
@@ -535,7 +539,7 @@ void MultiLayerSpinningLidar::selfClear(){
             addCastingMarker(pt, current_observation_ptr.size(), markerArray);
           }       
           else{
-            pct_marking_->removePCPtr((*it_z).second.first);
+            pct_marking_->removePCPtr((*it_z).second);
           } 
                  
         }
@@ -544,9 +548,8 @@ void MultiLayerSpinningLidar::selfClear(){
     }
   }
 
-  pct_marking_->updateCleared(current_observation_ptr);
+  //pct_marking_->updateCleared(current_observation_ptr);
   //@ put to current observation, different for global/local
-  sensor_current_observation_ = pc_current_window_;
   
   if(pub_casting_->get_subscription_count()>0){
     pub_casting_->publish(markerArray);
@@ -679,12 +682,15 @@ void MultiLayerSpinningLidar::pubUpdateLoop()
         if((*itx).second[(*ity).first].empty())
           return;
         for(auto itz=(*itx).second[(*ity).first].begin();itz!=(*itx).second[(*ity).first].end();itz++){
+          if((*itz).second.pc_== nullptr){
+            continue;
+          }
           pcl::PointXYZ pt;
           pt.x = (*itx).first*resolution_;
           pt.y = (*ity).first*resolution_;
           pt.z = (*itz).first*height_resolution_;   
-          if((*itz).second.first->points.size()>1)
-            *pcl_msg += (*(*itz).second.first);  
+          if((*itz).second.pc_->points.size()>1)
+            *pcl_msg += (*(*itz).second.pc_);  
         }
       }
     }

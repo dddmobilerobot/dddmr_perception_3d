@@ -83,18 +83,27 @@ struct marking_voxel{
   int z;
 };
 
+class per_marking{
+  public:
+    pcl::PointCloud<pcl::PointXYZI>::Ptr pc_;
+    pcl::ModelCoefficients::Ptr mc_;
+    std::unordered_map<int, float> nodes_of_min_distance_;
+};
+
 class Marking{
   /*
   This class is created to support marking in this plugin and made it sync with dynamic graph
   Originally, the marking_ is created but I need to sync it with dynamic graph,
   therefore, the class with do it to handle two std::map
   */
-  typedef std::map<int, std::map<int, std::map<int, std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, pcl::ModelCoefficients::Ptr>>>> marking_t;
+  typedef std::map<int, std::map<int, std::map<int, perception_3d::per_marking>>> marking_t;
 
   public:
 
     Marking(DynamicGraph* dg, double inflation_radius, pcl::search::KdTree<pcl::PointXYZ>::Ptr kdtree_ground, double xy_resolution, double height_resolution):
       dGraph_(dg),inflation_radius_(inflation_radius),kdtree_ground_(kdtree_ground),xy_resolution_(xy_resolution),height_resolution_(height_resolution){};
+    
+    ~Marking();
 
     void addPCPtr(const double x, const double y, const double z, 
       const pcl::PointCloud<pcl::PointXYZI>::Ptr& pcptr, 
@@ -105,22 +114,22 @@ class Marking{
       const pcl::ModelCoefficients::Ptr& pcplaneptr,
       std::unordered_map<int, float>& nodes_of_min_distance);
 
-    void removePCPtr(pcl::PointCloud<pcl::PointXYZI>::Ptr& pcptr);
+    void removePCPtr(perception_3d::per_marking& per_marking);
 
     void updateCleared(const std::vector<marking_voxel>& current_observation_ptr);
 
-    marking_t::iterator getXIter(const int x_bound){return marking.lower_bound(x_bound);};
-    marking_t::iterator getBegin(){return marking.begin();};
-    marking_t::iterator getEnd(){return marking.end();};
+    marking_t::iterator getXIter(const int x_bound){return marking_.lower_bound(x_bound);};
+    marking_t::iterator getBegin(){return marking_.begin();};
+    marking_t::iterator getEnd(){return marking_.end();};
 
     double get_dGraphValue(const unsigned int index){return dGraph_->getValue(index);};
 
   private:
     /*Voxel structure*/
-    marking_t marking;
+    marking_t marking_;
 
     /*For dynamic_graph, because kdd find int index, we use int*/
-    std::map<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::unordered_map<int, float>> marking2node;  
+    std::map<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::unordered_map<int, float>> marking2node_;  
 
     DynamicGraph* dGraph_;  
     

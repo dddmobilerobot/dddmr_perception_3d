@@ -154,7 +154,7 @@ class MultiLayerSpinningLidar: public Sensor{
     double perception_window_size_; 
     double segmentation_ignore_ratio_;
     bool pub_gbl_marking_for_visualization_;
-    int euclidean_cluster_extraction_min_cluster_size_, euclidean_cluster_extraction_max_cluster_size_;
+    int euclidean_cluster_extraction_min_cluster_size_;
     double euclidean_cluster_extraction_tolerance_;
 
     /*pub and sub*/

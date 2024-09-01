@@ -127,6 +127,7 @@ ament_target_dependencies(cluster_marking
 add_library(depth_camera_buffer SHARED
   plugins/depth_camera/depth_camera_observation.cpp
   plugins/depth_camera/depth_camera_observation_buffer.cpp
+  plugins/depth_camera/frustum_utils.cpp
 )
 target_link_libraries(depth_camera_buffer
   ${PCL_LIBRARIES}

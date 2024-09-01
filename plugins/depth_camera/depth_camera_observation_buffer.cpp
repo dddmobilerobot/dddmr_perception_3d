@@ -82,7 +82,7 @@ void DepthCameraObservationBuffer::bufferCloud(const sensor_msgs::msg::PointClou
   observation_vector_.push_back(DepthCameraObservation(cloud));
 
   std::string origin_frame = sensor_frame_ == "" ? cloud.header.frame_id : sensor_frame_;
-  
+
   if(sensor_frame_ == "")
   {
     RCLCPP_WARN_STREAM(logger_,"Warning: Sensor frame is not provided in yaml file. Using pointcloud header frame id");
@@ -91,13 +91,13 @@ void DepthCameraObservationBuffer::bufferCloud(const sensor_msgs::msg::PointClou
   try
   {
     if(!got_b2s_){
-      b2s_ = tf2Buffer_->lookupTransform(base_link_frame_, origin_frame, tf2::TimePointZero, tf2::durationFromSec(0.5));
+      b2s_ = tf2Buffer_->lookupTransform(base_link_frame_, cloud.header.frame_id , tf2::TimePointZero, tf2::durationFromSec(0.5));
       got_b2s_ = true;
     }
   }
   catch (tf2::TransformException& e)
   {
-    RCLCPP_INFO(logger_, "Failed to transform pointcloud: %s", e.what());
+    RCLCPP_INFO(logger_, "Failed to transform pointcloud to %s frame: %s", base_link_frame_.c_str(), e.what());
   }
 
   //@ get af3 to convert observation to baselink frame
@@ -130,9 +130,20 @@ void DepthCameraObservationBuffer::bufferCloud(const sensor_msgs::msg::PointClou
     RCLCPP_WARN_THROTTLE(logger_, *clock_, 5000, "Point cloud size filtered from min-max obstacle height is: %lu, voxelize it to: %lu", cloud_size_after_min_max_obstacle, observation_vector_.back().cloud_->points.size());
   }
 
-  //@ given these observations come from sensors... we'll need to store the origin pt of the sensor
-  geometry_msgs::msg::TransformStamped m2s; //map2sensor
-  m2s = tf2Buffer_->lookupTransform(global_frame_, origin_frame, tf2::TimePointZero, tf2::durationFromSec(0.5));
+  //@ given these observations come from sensors... we'll need to store the origin pt of the sensor, i.e.: camera_link
+  geometry_msgs::msg::TransformStamped m2s; //map2sensor for frustum
+  geometry_msgs::msg::TransformStamped m2b; //map2baselink for converting b2s to m2s
+  
+  try
+  {
+    m2s = tf2Buffer_->lookupTransform(global_frame_, origin_frame, tf2::TimePointZero, tf2::durationFromSec(0.2));
+    m2b = tf2Buffer_->lookupTransform(global_frame_, base_link_frame_, tf2::TimePointZero, tf2::durationFromSec(0.2));
+  }
+  catch (tf2::TransformException& e)
+  {
+    RCLCPP_INFO(logger_, "Failed to transform pointcloud: %s", e.what());
+  }
+
   observation_vector_.back().origin_.x = m2s.transform.translation.x;
   observation_vector_.back().origin_.y = m2s.transform.translation.y;
   observation_vector_.back().origin_.z = m2s.transform.translation.z;
@@ -152,7 +163,6 @@ void DepthCameraObservationBuffer::bufferCloud(const sensor_msgs::msg::PointClou
 
   //@ get af3 to convert frustum to globl frame
   Eigen::Affine3d trans_m2s_af3 = tf2::transformToEigen(m2s);
-  //@ ToDo: Remove dependency on pcl_ros to transform the pointcloud
   pcl::transformPointCloud(*observation_vector_.back().frustum_, *observation_vector_.back().frustum_, trans_m2s_af3);
 
   observation_vector_.back().frustum_->header.frame_id = global_frame_;
@@ -161,6 +171,10 @@ void DepthCameraObservationBuffer::bufferCloud(const sensor_msgs::msg::PointClou
   //@ !!! findFrustumNormal() will assign BRNear_&&TLFar_  which are both in global frame
   observation_vector_.back().findFrustumNormal();
   observation_vector_.back().findFrustumPlane();
+
+  //@ Convert cloud_ from base_link_frame_ to global frame
+  Eigen::Affine3d trans_m2b_af3 = tf2::transformToEigen(m2b);
+  pcl::transformPointCloud(*observation_vector_.back().cloud_, *observation_vector_.back().cloud_, trans_m2b_af3);
   pcl_conversions::toPCL(clock_->now(), observation_vector_.back().cloud_->header.stamp);
   observation_vector_.back().cloud_->header.frame_id = global_frame_;
 
