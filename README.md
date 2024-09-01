@@ -14,7 +14,7 @@ You can reference:
 Perception 3D:
 - Sensor support:
   - [x] Multilayer spinning lidar (Velodyne/Ouster/Leishen)
-  - [ ] Depth camera (Realsense/oak)
+  - [x] Depth camera (Realsense/oak)
   - [ ] Scanning Lidar (Livox mid-360/Unitree 4D LiDAR L1)
 - Zone feature support:
   - [x] Static layer
