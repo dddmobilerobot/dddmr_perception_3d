@@ -20,3 +20,40 @@ Perception 3D:
   - [x] Static layer
   - [x] Speed limit layer
   - [x] No enter layer
+
+## Multiple Depth Cameras Demo (Realsense D455)
+
+<p align='center'>
+    <img src="https://github.com/dddmobilerobot/dddmr_documentation_materials/blob/main/perception_3d/multi_depth_camera_demo.gif" width="640" height="400"/>
+</p>
+
+<details><summary> <b>Click me to see tutorial</b> </summary>
+  
+### 1. Create docker image
+The package runs in the docker, so we need to build the image first. We support both x64 (tested in intel NUC) and arm64 (tested in nvidia jetson jpack5.1.3/6).
+```
+cd ~
+git clone https://github.com/dddmobilerobot/dddmr_navigation.git
+cd ~/dddmr_navigation && git submodule init && git submodule update
+cd ~/dddmr_navigation/dddmr_docker/docker_file && ./build.bash
+```
+### 2. Download essential files
+ROS2 bag that contains depth images from two cameras will be download to run the demo.
+```
+cd ~/dddmr_navigation/src/dddmr_perception_3d && ./download_files.bash
+```
+### 3. Run demo
+#### Create a docker container
+> [!NOTE]
+> The following command will create an interactive docker container using the image we built. We will launch the demo manually in the container.
+```
+cd ~/dddmr_navigation/dddmr_docker && ./run_demo.bash
+```
+##### Launch everything in the container
+The bag file will be auto-played after 5 seconds when launching.
+```
+cd ~/dddmr_navigation && source /opt/ros/humble/setup.bash && colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
+ros2 launch perception_3d multi_depth_camera_3d_ros_launch.py
+```
+</details>
