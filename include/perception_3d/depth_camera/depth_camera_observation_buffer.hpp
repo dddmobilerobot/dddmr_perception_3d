@@ -89,7 +89,8 @@ public:
   bool isCurrent() const;
 
   void resetLastUpdated();
-
+  
+  std::string getGlobalFrame(){return global_frame_;};
 
 private:
   

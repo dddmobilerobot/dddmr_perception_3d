@@ -60,7 +60,10 @@ class DepthCameraLayer: public Sensor{
     std::shared_ptr<perception_3d::FrustumUtils> frustum_utils_;
 
     rclcpp::Clock::SharedPtr clock_;
+    
+    rclcpp::CallbackGroup::SharedPtr marking_pub_cb_group_;
 
+    rclcpp::TimerBase::SharedPtr marking_pub_timer_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_current_observation_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_current_segmentation_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_current_projected_;
@@ -69,6 +72,7 @@ class DepthCameraLayer: public Sensor{
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_casting_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_gbl_marking_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_dGraph_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_frustum_;
 
     void cbSensor(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
                                     const std::shared_ptr<perception_3d::DepthCameraObservationBuffer>& buffer);
@@ -76,10 +80,13 @@ class DepthCameraLayer: public Sensor{
         
     //@ For casting visualization
     void addCastingMarker(const pcl::PointXYZI& pt, size_t id, visualization_msgs::msg::MarkerArray& markerArray);
+    
+    void pubUpdateLoop();
 
     std::map<std::string, rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> sub_pc_map_; 
     std::map<std::string, std::shared_ptr<perception_3d::DepthCameraObservationBuffer>> observation_buffers_;
     
+    bool pub_gbl_marking_for_visualization_;
     bool is_local_planner_;
     double resolution_, height_resolution_;
     double segmentation_ignore_ratio_;

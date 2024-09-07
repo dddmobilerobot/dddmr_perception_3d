@@ -37,6 +37,88 @@ namespace perception_3d
 
 void FrustumUtils::setObservationBuffers(std::map<std::string, std::shared_ptr<perception_3d::DepthCameraObservationBuffer>>& observation_buffers){
   observation_buffers_ = observation_buffers;
+
+  //@ generate frustum marker for visualization from observation buffers
+  current_frustums_marker_array_.markers.clear();
+  for (auto it = observation_buffers.begin(); it != observation_buffers.end(); ++it)
+  {
+
+    std::vector<perception_3d::DepthCameraObservation> observations_of_a_camera;
+    (*it).second->getObservations(observations_of_a_camera);
+    perception_3d::DepthCameraObservation& obs = observations_of_a_camera.back();
+
+    visualization_msgs::msg::Marker frustum_marker;
+    frustum_marker.header.frame_id = (*it).second->getGlobalFrame();
+    frustum_marker.action = visualization_msgs::msg::Marker::ADD;
+    frustum_marker.type = visualization_msgs::msg::Marker::LINE_LIST;
+    frustum_marker.pose.orientation.w = 1.0;
+    frustum_marker.ns = (*it).first;
+    frustum_marker.id = 0;
+    /* Note of frustum sequence -> TLNear: Top Left Near
+    TLNear = frustum_->points[0];
+    TRNear = frustum_->points[1];
+    BLNear = frustum_->points[2];
+    BRNear = frustum_->points[3];
+    TLFar = frustum_->points[4];
+    TRFar = frustum_->points[5];
+    BLFar = frustum_->points[6];
+    BRFar = frustum_->points[7];
+    */
+
+    frustum_marker.scale.x = 0.02;
+    frustum_marker.color.r = 1.0; frustum_marker.color.g = 0.6; frustum_marker.color.b = 0.0;
+    frustum_marker.color.a = 0.6;
+    geometry_msgs::msg::Point gpt1, gpt2;
+    gpt1.x = obs.frustum_->points[0].x; gpt1.y = obs.frustum_->points[0].y; gpt1.z = obs.frustum_->points[0].z; 
+    gpt2.x = obs.frustum_->points[1].x; gpt2.y = obs.frustum_->points[1].y; gpt2.z = obs.frustum_->points[1].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    gpt1.x = obs.frustum_->points[2].x; gpt1.y = obs.frustum_->points[2].y; gpt1.z = obs.frustum_->points[2].z; 
+    gpt2.x = obs.frustum_->points[3].x; gpt2.y = obs.frustum_->points[3].y; gpt2.z = obs.frustum_->points[3].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    gpt1.x = obs.frustum_->points[4].x; gpt1.y = obs.frustum_->points[4].y; gpt1.z = obs.frustum_->points[4].z; 
+    gpt2.x = obs.frustum_->points[5].x; gpt2.y = obs.frustum_->points[5].y; gpt2.z = obs.frustum_->points[5].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    gpt1.x = obs.frustum_->points[6].x; gpt1.y = obs.frustum_->points[6].y; gpt1.z = obs.frustum_->points[6].z; 
+    gpt2.x = obs.frustum_->points[7].x; gpt2.y = obs.frustum_->points[7].y; gpt2.z = obs.frustum_->points[7].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    gpt1.x = obs.frustum_->points[0].x; gpt1.y = obs.frustum_->points[0].y; gpt1.z = obs.frustum_->points[0].z; 
+    gpt2.x = obs.frustum_->points[4].x; gpt2.y = obs.frustum_->points[4].y; gpt2.z = obs.frustum_->points[4].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    gpt1.x = obs.frustum_->points[1].x; gpt1.y = obs.frustum_->points[1].y; gpt1.z = obs.frustum_->points[1].z; 
+    gpt2.x = obs.frustum_->points[5].x; gpt2.y = obs.frustum_->points[5].y; gpt2.z = obs.frustum_->points[5].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    gpt1.x = obs.frustum_->points[2].x; gpt1.y = obs.frustum_->points[2].y; gpt1.z = obs.frustum_->points[2].z; 
+    gpt2.x = obs.frustum_->points[6].x; gpt2.y = obs.frustum_->points[6].y; gpt2.z = obs.frustum_->points[6].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    gpt1.x = obs.frustum_->points[3].x; gpt1.y = obs.frustum_->points[3].y; gpt1.z = obs.frustum_->points[3].z; 
+    gpt2.x = obs.frustum_->points[7].x; gpt2.y = obs.frustum_->points[7].y; gpt2.z = obs.frustum_->points[7].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    gpt1.x = obs.frustum_->points[4].x; gpt1.y = obs.frustum_->points[4].y; gpt1.z = obs.frustum_->points[4].z; 
+    gpt2.x = obs.frustum_->points[6].x; gpt2.y = obs.frustum_->points[6].y; gpt2.z = obs.frustum_->points[6].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    gpt1.x = obs.frustum_->points[5].x; gpt1.y = obs.frustum_->points[5].y; gpt1.z = obs.frustum_->points[5].z; 
+    gpt2.x = obs.frustum_->points[7].x; gpt2.y = obs.frustum_->points[7].y; gpt2.z = obs.frustum_->points[7].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    gpt1.x = obs.frustum_->points[0].x; gpt1.y = obs.frustum_->points[0].y; gpt1.z = obs.frustum_->points[0].z; 
+    gpt2.x = obs.frustum_->points[2].x; gpt2.y = obs.frustum_->points[2].y; gpt2.z = obs.frustum_->points[2].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    gpt1.x = obs.frustum_->points[1].x; gpt1.y = obs.frustum_->points[1].y; gpt1.z = obs.frustum_->points[1].z; 
+    gpt2.x = obs.frustum_->points[3].x; gpt2.y = obs.frustum_->points[3].y; gpt2.z = obs.frustum_->points[3].z; 
+    frustum_marker.points.push_back(gpt1);
+    frustum_marker.points.push_back(gpt2);
+    current_frustums_marker_array_.markers.push_back(frustum_marker);
+  }
 }
 
 bool FrustumUtils::isAttachFRUSTUMs(pcl::PointXYZI& testPoint)
@@ -132,6 +214,14 @@ bool FrustumUtils::isInsideFRUSTUMwoAttach(perception_3d::DepthCameraObservation
     }
   }
   return true;
+}
+
+bool FrustumUtils::isinFrustumsObservations(pcl::PointXYZ& testPoint){
+  pcl::PointXYZI testPoint_XYZI;
+  testPoint_XYZI.x = testPoint.x;
+  testPoint_XYZI.y = testPoint.y;
+  testPoint_XYZI.z = testPoint.z;
+  return isinFrustumsObservations(testPoint_XYZI);
 }
 
 bool FrustumUtils::isinFrustumsObservations(pcl::PointXYZI& testPoint){

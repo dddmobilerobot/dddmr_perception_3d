@@ -99,6 +99,10 @@ void DepthCameraLayer::onInitialize()
   node_->get_parameter(name_ + ".euclidean_cluster_extraction_min_cluster_size", euclidean_cluster_extraction_min_cluster_size_);
   RCLCPP_INFO(node_->get_logger().get_child(name_), "euclidean_cluster_extraction_min_cluster_size: %d", euclidean_cluster_extraction_min_cluster_size_);  
   
+  node_->declare_parameter(name_ + ".pub_gbl_marking_for_visualization", rclcpp::ParameterValue(false));
+  node_->get_parameter(name_ + ".pub_gbl_marking_for_visualization", pub_gbl_marking_for_visualization_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "pub_gbl_marking_for_visualization: %d", pub_gbl_marking_for_visualization_);
+
   //@ create cluster marking object
   pct_marking_ = std::make_shared<Marking>(&dGraph_, gbl_utils_->getInflationRadius(), shared_data_->kdtree_ground_, resolution_, height_resolution_);
   frustum_utils_ = std::make_shared<FrustumUtils>();
@@ -111,7 +115,13 @@ void DepthCameraLayer::onInitialize()
   pub_gbl_marking_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/global_marking", 2);
   pub_dGraph_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/dGraph", 2);
   pub_casting_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(name_ + "/tracing_objects", 2);
+  pub_frustum_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(name_ + "/frustum", rclcpp::QoS(1));
 
+  marking_pub_cb_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  auto loop_time = std::chrono::seconds(1);
+  marking_pub_timer_ = node_->create_wall_timer(loop_time, std::bind(&DepthCameraLayer::pubUpdateLoop, this), marking_pub_cb_group_);
+
+  //@ loop observation source
   std::string topics_string;
   node_->declare_parameter(name_ + ".observation_sources", rclcpp::ParameterValue(""));
   node_->get_parameter(name_ + ".observation_sources", topics_string);
@@ -248,6 +258,7 @@ void DepthCameraLayer::selfClear(){
   
   //@ push latest observation buffer into frustum utils, so we get latest frustum for clearing
   frustum_utils_->setObservationBuffers(observation_buffers_);
+  pub_frustum_->publish(frustum_utils_->current_frustums_marker_array_);
 
   visualization_msgs::msg::MarkerArray markerArray;
   pc_current_window_.reset(new pcl::PointCloud<pcl::PointXYZI>);
@@ -311,7 +322,7 @@ void DepthCameraLayer::selfClear(){
         if(!frustum_utils_->isinFrustumsObservations(pt)){
           std::vector<int> id(1);
           std::vector<float> sqdist(1);
-          if(kdtree_last_observation->radiusSearch(pt, 0.05, id, sqdist, 1)>0){
+          if(!observation_clear && kdtree_last_observation->radiusSearch(pt, 0.05, id, sqdist, 1)>0){
             //RCLCPP_INFO(node_->get_logger(), "Obstacles near the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
             perception_3d::marking_voxel a_voxel;
             a_voxel.x = (*it_x).first;
@@ -335,61 +346,22 @@ void DepthCameraLayer::selfClear(){
         else{
           if(frustum_utils_->isAttachFRUSTUMs(pt)){
             //@ Check do all points attach, if all of them attach, clear it
-            bool do_clear = true;
-            for(auto marking_pt=(*it_z).second.pc_->points.begin(); marking_pt!=(*it_z).second.pc_->points.end(); marking_pt++){
-              if(!frustum_utils_->isAttachFRUSTUMs((*marking_pt))){
-                //@ a point does not attach, dont clear
-                do_clear = false;
-                break;
-              }
-            }
-            if(do_clear){
-              //RCLCPP_INFO(node_->get_logger(), "isAttachment: Remove the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
+            if(observation_clear){
+              //@ observation is clear, clear it
               pct_marking_->removePCPtr((*it_z).second);
             }
             else{
-              //RCLCPP_INFO(node_->get_logger(), "isAttachment: Obstacles near the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
-              perception_3d::marking_voxel a_voxel;
-              a_voxel.x = (*it_x).first;
-              a_voxel.y = (*it_y).first;
-              a_voxel.z = (*it_z).first;
-              current_observation_ptr.push_back(a_voxel);
-              *pc_current_window_ += (*(*it_z).second.pc_);
-              addCastingMarker(pt, current_observation_ptr.size(), markerArray);
-            }
-          }    
-          else{
-            //@ Not attach, so do regular check
-            std::vector<int> id(1);
-            std::vector<float> sqdist(1);
-            if(kdtree_last_observation->radiusSearch(pt, 0.05, id, sqdist, 1)>0){
-              //RCLCPP_INFO(node_->get_logger(), "Not isAttachment: Obstacles near the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
-              perception_3d::marking_voxel a_voxel;
-              a_voxel.x = (*it_x).first;
-              a_voxel.y = (*it_y).first;
-              a_voxel.z = (*it_z).first;
-              current_observation_ptr.push_back(a_voxel);
-              *pc_current_window_ += (*(*it_z).second.pc_);
-              addCastingMarker(pt, current_observation_ptr.size(), markerArray);
-            }
-            else{
-              //@ dealing with concave pc issue
-              bool do_clear = true;
+              int engage_count = 0;
+              //@ compute engagement ratio
               for(auto marking_pt=(*it_z).second.pc_->points.begin(); marking_pt!=(*it_z).second.pc_->points.end(); marking_pt++){
                 std::vector<int> id(1);
                 std::vector<float> sqdist(1);
-                if(kdtree_last_observation->radiusSearch((*marking_pt), 0.05, id, sqdist, 1)>0){
-                  //@ a point does not attach, dont clear
-                  do_clear = false;
-                  break;
+                if(kdtree_last_observation->radiusSearch((*marking_pt), 0.01, id, sqdist, 1)>0){
+                  engage_count++;
                 }
               }
-              if(do_clear){
-                //RCLCPP_INFO(node_->get_logger(), "Not isAttachment: concave test passed, the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
-                pct_marking_->removePCPtr((*it_z).second);
-              }
-              else{
-                //RCLCPP_INFO(node_->get_logger(), "Not isAttachment: concave test failed, Obstacles near the marking: %.2f, %.2f, %.2f, skip clearing the marking.", pt.x, pt.y, pt.z);
+              if(1.0*engage_count/(*it_z).second.pc_->points.size()>0.1){
+                //@ 10% of pc collide obstacle, we should not reject
                 perception_3d::marking_voxel a_voxel;
                 a_voxel.x = (*it_x).first;
                 a_voxel.y = (*it_y).first;
@@ -398,6 +370,41 @@ void DepthCameraLayer::selfClear(){
                 *pc_current_window_ += (*(*it_z).second.pc_);
                 addCastingMarker(pt, current_observation_ptr.size(), markerArray);
               }
+              else{
+                pct_marking_->removePCPtr((*it_z).second);
+              }
+            }
+          }    
+          else{
+            //@ Not attach, so do regular check
+            if(observation_clear){
+              //@ no kd tree radius search will be found
+              int engage_count = 0;
+              pct_marking_->removePCPtr((*it_z).second);         
+            }
+            else{
+              int engage_count = 0;
+              //@ compute engagement ratio
+              for(auto marking_pt=(*it_z).second.pc_->points.begin(); marking_pt!=(*it_z).second.pc_->points.end(); marking_pt++){
+                std::vector<int> id(1);
+                std::vector<float> sqdist(1);
+                if(kdtree_last_observation->radiusSearch((*marking_pt), 0.01, id, sqdist, 1)>0){
+                  engage_count++;
+                }
+              }
+              if(1.0*engage_count/(*it_z).second.pc_->points.size()>0.1){
+                //@ 10% of pc collide obstacle, we should not reject
+                perception_3d::marking_voxel a_voxel;
+                a_voxel.x = (*it_x).first;
+                a_voxel.y = (*it_y).first;
+                a_voxel.z = (*it_z).first;
+                current_observation_ptr.push_back(a_voxel);
+                *pc_current_window_ += (*(*it_z).second.pc_);
+                addCastingMarker(pt, current_observation_ptr.size(), markerArray);
+              }
+              else{
+                pct_marking_->removePCPtr((*it_z).second);
+              }                            
             }
           } 
                  
@@ -547,9 +554,12 @@ void DepthCameraLayer::selfMark(){
       //*projected_cloud_clusters += (*projected_cloud_cluster);
       
 
-      //@ store the cluster in marking
-      //RCLCPP_INFO(node_->get_logger(), "Add marking at: %.2f, %.2f, %.2f", centroid.x, centroid.y, centroid.z);
-      pct_marking_->addPCPtr(centroid.x, centroid.y, centroid.z, cloud_cluster, coefficients);
+
+      if(frustum_utils_->isinFrustumsObservations(centroid)){
+        //@ store the cluster in marking
+        //RCLCPP_INFO(node_->get_logger(), "Add marking at: %.2f, %.2f, %.2f", centroid.x, centroid.y, centroid.z);
+        pct_marking_->addPCPtr(centroid.x, centroid.y, centroid.z, cloud_cluster, coefficients);
+      }
     }
     else{
       RCLCPP_DEBUG(node_->get_logger().get_child(name_), "Reject cluster with size: %lu at %f,%f,%f", cloud_cluster->points.size(), centroid.x, centroid.y, centroid.z);
@@ -639,6 +649,56 @@ bool DepthCameraLayer::isCurrent(){
     current = current && (*i).second->isCurrent();
   }
   return current;
+}
+
+
+void DepthCameraLayer::pubUpdateLoop()
+{
+
+  if(shared_data_->map_require_update_[name_]){
+    return;
+  }
+
+  if(pub_gbl_marking_for_visualization_){
+    pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_msg (new pcl::PointCloud<pcl::PointXYZI>);
+    //for(auto itx=marking_.begin();itx!=marking_.end();itx++){
+    for(auto itx=pct_marking_->getBegin();itx!=pct_marking_->getEnd();itx++){
+      for(auto ity=(*itx).second.begin();ity!=(*itx).second.end();ity++){
+        if((*itx).second[(*ity).first].empty())
+          return;
+        for(auto itz=(*itx).second[(*ity).first].begin();itz!=(*itx).second[(*ity).first].end();itz++){
+          if((*itz).second.pc_== nullptr){
+            continue;
+          }
+          pcl::PointXYZ pt;
+          pt.x = (*itx).first*resolution_;
+          pt.y = (*ity).first*resolution_;
+          pt.z = (*itz).first*height_resolution_;   
+          if((*itz).second.pc_->points.size()>1)
+            *pcl_msg += (*(*itz).second.pc_);  
+        }
+      }
+    }
+    sensor_msgs::msg::PointCloud2 ros_pc2_msg;
+    pcl_msg->header.frame_id = gbl_utils_->getGblFrame();
+    pcl::toROSMsg(*pcl_msg, ros_pc2_msg);
+    pub_gbl_marking_->publish(ros_pc2_msg);
+  }
+
+  pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_msg2 (new pcl::PointCloud<pcl::PointXYZI>);
+  for(size_t index=0;index<shared_data_->static_ground_size_;index++){
+    pcl::PointXYZI ipt;
+    ipt.x = shared_data_->pcl_ground_->points[index].x;
+    ipt.y = shared_data_->pcl_ground_->points[index].y;
+    ipt.z = shared_data_->pcl_ground_->points[index].z;   
+    ipt.intensity = pct_marking_->get_dGraphValue(index);
+    pcl_msg2->push_back(ipt);
+  }
+  sensor_msgs::msg::PointCloud2 ros_pc2_msg2;
+  pcl_msg2->header.frame_id = gbl_utils_->getGblFrame();
+  pcl::toROSMsg(*pcl_msg2, ros_pc2_msg2);
+  pub_dGraph_->publish(ros_pc2_msg2);
+  
 }
 
 }

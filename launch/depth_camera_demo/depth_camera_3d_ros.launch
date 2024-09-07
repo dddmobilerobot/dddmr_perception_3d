@@ -1,0 +1,30 @@
+<launch>
+
+  <node pkg="mcl_3dl" exec="pcl_publisher" output="screen" respawn="false">
+    <param from="$(find-pkg-share mcl_3dl)/config/pcl_publisher.yaml" />
+    <param name="map_dir" value="$(find-pkg-share perception_3d)/map/map.pcd" />
+    <param name="ground_dir" value="$(find-pkg-share perception_3d)/map/ground.pcd" />
+  </node>
+  
+  <!--depth image to pointcloud, so the voxelization is occurred in this node to save computation overhead in perception3d ros-->
+  <node pkg="perception_3d" exec="depthimg2pointcloud_node" name="depthimg2pointcloud_node" output="screen">
+    <param name="topic" value="/camera/camera/depth/image_rect_raw"/>
+    <param name="info" value="/camera/camera/depth/camera_info"/>
+    <param name="max_distance" value="6.0"/>
+    <param name="sample_step" value="4"/>
+    <param name="leaf_size" value="0.05"/>
+  </node>
+
+  <!--name argument is not required, because it will overwrite all node name in the exec-->
+  <node pkg="perception_3d" exec="perception_3d_ros_node" output="screen" respawn="false">
+    <param from="$(find-pkg-share perception_3d)/config/depth_camera_demo/depth_camera_3d_ros.yaml" />
+  </node>
+
+  <!--- TF -->
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="map2baselink" args="1.0 0 0.0 0.0 0.0 0.0 /map /base_link" />
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="baselink2cameralink" args="0.5 0 0.4 0.0 0.0 0.0 /base_link /camera_link" />
+  
+  <let name="rviz_config" value="$(find-pkg-share perception_3d)/rviz/depth_camera_3d.rviz"/>
+  <node name="rviz2" pkg="rviz2" exec="rviz2" args="-d $(var rviz_config)"/>
+
+</launch>
