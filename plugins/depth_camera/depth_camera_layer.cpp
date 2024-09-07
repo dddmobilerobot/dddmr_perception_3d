@@ -103,6 +103,10 @@ void DepthCameraLayer::onInitialize()
   node_->get_parameter(name_ + ".pub_gbl_marking_for_visualization", pub_gbl_marking_for_visualization_);
   RCLCPP_INFO(node_->get_logger().get_child(name_), "pub_gbl_marking_for_visualization: %d", pub_gbl_marking_for_visualization_);
 
+  node_->declare_parameter(name_ + ".pub_gbl_marking_frequency", rclcpp::ParameterValue(1.0));
+  node_->get_parameter(name_ + ".pub_gbl_marking_frequency", pub_gbl_marking_frequency_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "pub_gbl_marking_frequency: %.2f", pub_gbl_marking_frequency_);
+
   //@ create cluster marking object
   pct_marking_ = std::make_shared<Marking>(&dGraph_, gbl_utils_->getInflationRadius(), shared_data_->kdtree_ground_, resolution_, height_resolution_);
   frustum_utils_ = std::make_shared<FrustumUtils>();
@@ -115,10 +119,10 @@ void DepthCameraLayer::onInitialize()
   pub_gbl_marking_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/global_marking", 2);
   pub_dGraph_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(name_ + "/dGraph", 2);
   pub_casting_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(name_ + "/tracing_objects", 2);
-  pub_frustum_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(name_ + "/frustum", rclcpp::QoS(1));
+  pub_frustum_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(name_ + "/frustum", 2);
 
   marking_pub_cb_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  auto loop_time = std::chrono::seconds(1);
+  auto loop_time = std::chrono::milliseconds(int(1000/pub_gbl_marking_frequency_));
   marking_pub_timer_ = node_->create_wall_timer(loop_time, std::bind(&DepthCameraLayer::pubUpdateLoop, this), marking_pub_cb_group_);
 
   //@ loop observation source
@@ -256,6 +260,10 @@ void DepthCameraLayer::selfClear(){
     observation_clear = true;
   }
   
+  for(auto an_obs=observation_buffers_.begin(); an_obs!=observation_buffers_.end(); an_obs++){
+    if(!an_obs->second->isFirstScanReady())
+      return;
+  }
   //@ push latest observation buffer into frustum utils, so we get latest frustum for clearing
   frustum_utils_->setObservationBuffers(observation_buffers_);
   pub_frustum_->publish(frustum_utils_->current_frustums_marker_array_);
@@ -448,6 +456,11 @@ void DepthCameraLayer::selfMark(){
   {
     RCLCPP_INFO(node_->get_logger().get_child(name_), "Failed to get transforms: %s", e.what());
     return;
+  }
+
+  for(auto an_obs=observation_buffers_.begin(); an_obs!=observation_buffers_.end(); an_obs++){
+    if(!an_obs->second->isFirstScanReady())
+      return;
   }
 
   pcl_msg_gbl_.reset(new pcl::PointCloud<pcl::PointXYZI>());

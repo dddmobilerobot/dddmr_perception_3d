@@ -66,6 +66,7 @@ DepthCameraObservationBuffer::DepthCameraObservationBuffer(
   observation_persistence_(observation_persistence),
   logger_(logger)
 {
+  first_scan_received_ = false;
   resetLastUpdated();
   got_b2s_ = false;
 }
@@ -182,6 +183,7 @@ void DepthCameraObservationBuffer::bufferCloud(const sensor_msgs::msg::PointClou
   resetLastUpdated();
   //@ we'll also remove any stale observations from the vector
   purgeStaleObservations();
+  first_scan_received_ = true;
 }
 
 // returns a copy of the observations

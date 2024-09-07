@@ -20,18 +20,19 @@ perception_3d:
       static_imposing_radius: 1.0
     depth_camera:
       plugin: "perception_3d::DepthCameraLayer"
+      pub_gbl_marking_for_visualization: true
+      pub_gbl_marking_frequency: 10.0
+      is_local_planner: false
       euclidean_cluster_extraction_tolerance: 0.1
       euclidean_cluster_extraction_min_cluster_size: 1
       xy_resolution: 0.05
       height_resolution: 0.2
       perception_window_size: 5.0 
       segmentation_ignore_ratio: 1.0
-      observation_sources: "camera"
+      observation_sources: camera
       camera:
         topic: "/depthimg2pointcloud_node/point_cloud_from_depth"
         sensor_frame: "camera_link"
-        pub_gbl_marking_for_visualization: true
-        is_local_planner: false
         observation_persistence: 0.0
         expected_update_rate: 0.1
         min_obstacle_height: 0.0

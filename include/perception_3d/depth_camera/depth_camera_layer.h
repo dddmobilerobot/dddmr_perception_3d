@@ -87,6 +87,7 @@ class DepthCameraLayer: public Sensor{
     std::map<std::string, std::shared_ptr<perception_3d::DepthCameraObservationBuffer>> observation_buffers_;
     
     bool pub_gbl_marking_for_visualization_;
+    double pub_gbl_marking_frequency_;
     bool is_local_planner_;
     double resolution_, height_resolution_;
     double segmentation_ignore_ratio_;

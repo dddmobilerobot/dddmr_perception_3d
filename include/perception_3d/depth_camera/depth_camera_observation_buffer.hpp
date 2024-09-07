@@ -91,7 +91,9 @@ public:
   void resetLastUpdated();
   
   std::string getGlobalFrame(){return global_frame_;};
-
+  
+  bool isFirstScanReady(){return first_scan_received_;};
+  
 private:
   
   void purgeStaleObservations();
@@ -125,7 +127,8 @@ private:
   bool adapt_height_init_ = false;
   bool got_b2s_;
   geometry_msgs::msg::TransformStamped b2s_; //baselink2sensor
-  
+  bool first_scan_received_;
+
 };
 }
 #endif  // DEPTH_CAMERA_OBSERVATION_BUFFER_H_
