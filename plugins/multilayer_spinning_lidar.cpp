@@ -369,7 +369,13 @@ void MultiLayerSpinningLidar::selfMark(){
       
 
       //@ store the cluster in marking
-      pct_marking_->addPCPtr(centroid.x, centroid.y, centroid.z, cloud_cluster, coefficients);
+      //@ consider rounding problem, we have to convert the centroid coordinate back by resolution
+      pcl::PointXYZ voxelized_centroid;
+      voxelized_centroid.x = int(centroid.x/resolution_) * resolution_;
+      voxelized_centroid.y = int(centroid.y/resolution_) * resolution_;
+      voxelized_centroid.z = int(centroid.z/height_resolution_) * height_resolution_;
+      if(isinLidarObservation(voxelized_centroid))
+          pct_marking_->addPCPtr(centroid.x, centroid.y, centroid.z, cloud_cluster, coefficients);
 
 
     }
@@ -502,7 +508,7 @@ void MultiLayerSpinningLidar::selfClear(){
               pt_i.x = (*a_pt).x;
               pt_i.y = (*a_pt).y;
               pt_i.z = (*a_pt).z;
-              double search_distance = (*a_pt).intensity/3. + 0.1; //@ decrease spot size
+              double search_distance =  (*a_pt).intensity/5. + 0.05; //@ decrease spot size;
               std::vector<int> id;
               std::vector<float> sqdist;
               if(kdtree_last_observation->radiusSearch(pt_i, search_distance, id, sqdist)>0){
@@ -528,7 +534,7 @@ void MultiLayerSpinningLidar::selfClear(){
           std::vector<int> id;
           std::vector<float> sqdist;
           //@ I am not sure what happen below, looks like I redo check again but the threshold (1) is different
-          if(kdtree_last_observation->radiusSearch(pt, 0.2, id, sqdist)>1){
+          if(kdtree_last_observation->radiusSearch(pt, resolution_, id, sqdist)>1){
             *pc_current_window_ += (*(*it_z).second.pc_);
 
             perception_3d::marking_voxel a_voxel;
@@ -617,10 +623,7 @@ bool MultiLayerSpinningLidar::isinLidarObservation(pcl::PointXYZ& pc){
   if(result<vertical_FOV_bottom_ || result>vertical_FOV_top_)
     return false;
   
-  
   //@ Leverage shortest angle to rule out yaw angle
-  
-
   
   // Generate a pose pointing from sen sensor to cloud centroid
   // Remember, here we are all in global frame

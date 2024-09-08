@@ -166,6 +166,6 @@ def generate_launch_description():
   ld.add_action(perception_3d_ros)
   ld.add_action(rviz)
   
-  ld.add_action(TimerAction(period=5.0, actions=[bag_player]))
+  ld.add_action(TimerAction(period=3.0, actions=[bag_player]))
 
   return ld
