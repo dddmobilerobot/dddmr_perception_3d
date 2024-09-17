@@ -20,13 +20,13 @@ perception_3d:
       static_imposing_radius: 1.0
     lidar:
       plugin: "perception_3d::MultiLayerSpinningLidar"
-      topic: "cx/lslidar_point_cloud"
+      topic: "unilidar/cloud"
       pub_gbl_marking_for_visualization: true
-      vertical_FOV_top: 16.0
-      vertical_FOV_bottom: -16.0
-      scan_effective_positive_start: 30.0
+      vertical_FOV_top: 90.0
+      vertical_FOV_bottom: -0.0
+      scan_effective_positive_start: 0.0
       scan_effective_positive_end: 180.0
-      scan_effective_negative_start: -30.0
+      scan_effective_negative_start: -0.0
       scan_effective_negative_end: -180.0
       euclidean_cluster_extraction_tolerance: 0.1
       euclidean_cluster_extraction_min_cluster_size: 1
@@ -37,4 +37,4 @@ perception_3d:
       segmentation_ignore_ratio: 0.5 #if a segmentation match static pc with this ratio, we ignore it. ex: a wall
       is_local_planner: false
       expected_sensor_time: 0.1
-      stitcher_num: 0
+      stitcher_num: 8
