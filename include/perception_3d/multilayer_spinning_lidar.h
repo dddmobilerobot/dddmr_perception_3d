@@ -156,7 +156,7 @@ class MultiLayerSpinningLidar: public Sensor{
     bool pub_gbl_marking_for_visualization_;
     int euclidean_cluster_extraction_min_cluster_size_;
     double euclidean_cluster_extraction_tolerance_;
-
+    int stitcher_num_;
     /*pub and sub*/
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sensor_sub_;
     
@@ -180,6 +180,9 @@ class MultiLayerSpinningLidar: public Sensor{
 
     /*For isCurrent feature. Used to protect sensor broken*/
     rclcpp::Time last_observation_time_;
+
+    //@ list of pointcloud sticher for non-repetitive scan lidar
+    std::list<pcl::PointCloud<pcl::PointXYZ>> pcl_stitcher_;
 };
 
 }//end of name space

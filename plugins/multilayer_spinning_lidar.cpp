@@ -134,6 +134,10 @@ void MultiLayerSpinningLidar::onInitialize()
   node_->get_parameter(name_ + ".pub_gbl_marking_for_visualization", pub_gbl_marking_for_visualization_);
   RCLCPP_INFO(node_->get_logger().get_child(name_), "pub_gbl_marking_for_visualization: %d", pub_gbl_marking_for_visualization_);
 
+  node_->declare_parameter(name_ + ".stitcher_num", rclcpp::ParameterValue(0));
+  node_->get_parameter(name_ + ".stitcher_num", stitcher_num_);
+  RCLCPP_INFO(node_->get_logger().get_child(name_), "stitcher_num: %d", stitcher_num_);  
+  
   sensor_cb_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions sub_options;
   sub_options.callback_group = sensor_cb_group_;
@@ -163,12 +167,29 @@ void MultiLayerSpinningLidar::onInitialize()
 void MultiLayerSpinningLidar::cbSensor(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
 {
 
-  //@transform to point cloud library format first so we can leverage PCL
+  //@if not stitch, save copy time
   pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_msg (new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::fromROSMsg(*msg, *pcl_msg);
+  if(stitcher_num_<=0){
+    pcl::fromROSMsg(*msg, *pcl_msg);
+  }
+  else{
+    pcl::PointCloud<pcl::PointXYZ>::Ptr scan_msg (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::fromROSMsg(*msg, *scan_msg);
+    
+    if(pcl_stitcher_.size()<stitcher_num_){
+      pcl_stitcher_.push_back(*scan_msg);
+    }
+    else{
+      pcl_stitcher_.pop_front();
+      pcl_stitcher_.push_back(*scan_msg);
+    }
+    
+    for(auto si=pcl_stitcher_.begin(); si!=pcl_stitcher_.end();si++){
+      *pcl_msg += (*si);
+    }
+  }
 
   //@Create two trans, baselink->sensor and map->baselink
-
   try
   {
     trans_b2s_ = gbl_utils_->tf2Buffer()->lookupTransform(
@@ -502,13 +523,17 @@ void MultiLayerSpinningLidar::selfClear(){
             getCastingPointCloud(pt, casting_check);
             //@ we loop this "line" and do radius search to see if there is any obstacle, if there is an obstacle, it means this line is blocked, so ray trace fail
             for(auto a_pt=casting_check.points.begin(); a_pt!=casting_check.points.end(); a_pt++){
-
+              
+              //@ when casting back for last 5 cm, ignore it, because dirty lidar may cause casting fail
+              if((*a_pt).intensity<0.05)
+                break;
               //@ Create a point for kd-tree
               pcl::PointXYZ pt_i;
               pt_i.x = (*a_pt).x;
               pt_i.y = (*a_pt).y;
               pt_i.z = (*a_pt).z;
-              double search_distance =  (*a_pt).intensity/5. + 0.05; //@ decrease spot size;
+              double search_distance =  (*a_pt).intensity/20. + 0.01; //@ decrease spot size, ex: at 1.0 meter look for 5 cm;
+              search_distance = std::min(search_distance, 0.1);
               std::vector<int> id;
               std::vector<float> sqdist;
               if(kdtree_last_observation->radiusSearch(pt_i, search_distance, id, sqdist)>0){
