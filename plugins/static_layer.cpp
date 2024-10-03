@@ -229,12 +229,14 @@ void StaticLayer::radiusSearchConnection(){
       auto node = index_cnt;
       a_edge.first = (*it);
       double z_diff = fabs(pcl_ground_->points[node].z - pcl_ground_->points[a_edge.first].z);
-      if(z_diff >=0.1){
+      double distance_between_pair = sqrt(pcl::geometry::squaredDistance(pcl_ground_->points[node], pcl_ground_->points[a_edge.first]));
+      float vertical_angle = std::asin(z_diff / distance_between_pair);
+      if(vertical_angle >=0.349){ //@ 20 degree
         RCLCPP_DEBUG(node_->get_logger().get_child(name_), "Connection between %u and %u is %.2f",node, a_edge.first, z_diff);
         continue;
       }
       //@Create an edge
-      a_edge.second = sqrt(pcl::geometry::squaredDistance(pcl_ground_->points[node], pcl_ground_->points[a_edge.first]));
+      a_edge.second = distance_between_pair;
       shared_data_->sGraph_ptr_->insertNode(node, a_edge);
 
       //@Push bach the points for plane equation later
@@ -295,7 +297,7 @@ void StaticLayer::radiusSearchConnection(){
       //@ use map to impose weight on each node
       pointIdxRadiusSearch.clear();
       pointRadiusSquaredDistance.clear();
-      shared_data_->kdtree_map_->radiusSearch (pcl_node, 2.0, pointIdxRadiusSearch, pointRadiusSquaredDistance);
+      shared_data_->kdtree_map_->radiusSearch (pcl_node, static_imposing_radius_, pointIdxRadiusSearch, pointRadiusSquaredDistance);
       pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_z_axes(new pcl::PointCloud<pcl::PointXYZ>);
       for(auto i_pcl_z_axes=pointIdxRadiusSearch.begin();i_pcl_z_axes!=pointIdxRadiusSearch.end();i_pcl_z_axes++){
         pcl_z_axes->push_back(pcl_map_->points[*i_pcl_z_axes]);
